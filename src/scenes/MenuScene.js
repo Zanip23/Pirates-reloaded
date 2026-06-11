@@ -46,6 +46,7 @@ export class MenuScene extends Phaser.Scene {
     this.buttons = [];
 
     const newGameBtn = this.makeButton('NEW GAME', 0x1a6e2e, () => {
+      deleteSave();
       this.registry.set('player', JSON.parse(JSON.stringify(INITIAL_PLAYER)));
       this.scene.start('GameScene');
     });
@@ -69,6 +70,10 @@ export class MenuScene extends Phaser.Scene {
       fill: '#4a7aaa',
       fontFamily: 'Courier New',
     }).setOrigin(0.5, 1);
+
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.scale.off('resize', this.resize, this);
+    });
 
     this.resize({ width: this.scale.width, height: this.scale.height });
   }

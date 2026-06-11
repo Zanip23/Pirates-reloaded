@@ -15,11 +15,22 @@ export function loadGame() {
     const data = JSON.parse(raw);
     if (!data || typeof data !== 'object') return null;
 
-    // Ensure cargo has no 0 or negative items
-    if (data.cargo) {
-      for (const k in data.cargo) {
-        if (data.cargo[k] <= 0) delete data.cargo[k];
+    if (!data.cargo || typeof data.cargo !== 'object' || Array.isArray(data.cargo)) {
+      data.cargo = {};
+    }
+
+    // Ensure cargo has only positive whole item counts.
+    for (const k in data.cargo) {
+      const qty = Math.floor(Number(data.cargo[k]));
+      if (!Number.isFinite(qty) || qty <= 0) {
+        delete data.cargo[k];
+      } else {
+        data.cargo[k] = qty;
       }
+    }
+
+    if (!data.upgradeLevel || typeof data.upgradeLevel !== 'object' || Array.isArray(data.upgradeLevel)) {
+      data.upgradeLevel = {};
     }
 
     return data;
@@ -40,5 +51,9 @@ export function hasSave() {
 }
 
 export function deleteSave() {
-  localStorage.removeItem(SAVE_KEY);
+  try {
+    localStorage.removeItem(SAVE_KEY);
+  } catch (e) {
+    console.warn('Delete save failed:', e);
+  }
 }

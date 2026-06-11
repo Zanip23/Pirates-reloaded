@@ -1,5 +1,5 @@
 import { PORTS, GOODS, UPGRADES, RUMORS, INITIAL_PLAYER } from '../data.js';
-import { saveGame, loadGame } from '../save.js';
+import { saveGame, loadGame, deleteSave } from '../save.js';
 
 const MAP_W = 1200;
 const MAP_H = 800;
@@ -18,6 +18,9 @@ export class GameScene extends Phaser.Scene {
 
   create() {
     this.scale.on('resize', this.resize, this);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.scale.off('resize', this.resize, this);
+    });
     // ── Player state ──────────────────────────────────────────────
     if (this.doLoad) {
       const saved = loadGame();
@@ -26,18 +29,14 @@ export class GameScene extends Phaser.Scene {
       const reg = this.registry.get('player');
       this.player = reg || JSON.parse(JSON.stringify(INITIAL_PLAYER));
     }
-    // Defensive check
-    if (!this.player || typeof this.player !== 'object' || this.player.day === undefined) {
-       this.player = JSON.parse(JSON.stringify(INITIAL_PLAYER));
-    } else {
-       this.player = { ...JSON.parse(JSON.stringify(INITIAL_PLAYER)), ...this.player };
-    }
+    this.player = this.normalizePlayer(this.player);
 
     this.portUIOpen = false;
     this.currentPort = null;
     this.moveTarget = null;
     this.lastEventTime = 0;
     this.gameOver = false;
+    this.combatResolving = false;
     this.dayTimer = 0;
 
     // ── World ─────────────────────────────────────────────────────
@@ -65,6 +64,64 @@ export class GameScene extends Phaser.Scene {
     this.refreshHUD();
   }
 
+
+  normalizePlayer(player) {
+    const defaults = JSON.parse(JSON.stringify(INITIAL_PLAYER));
+    if (!player || typeof player !== 'object' || player.day === undefined) {
+      return defaults;
+    }
+
+    const merged = { ...defaults, ...player };
+    merged.cargo = (player.cargo && typeof player.cargo === 'object' && !Array.isArray(player.cargo)) ? { ...player.cargo } : {};
+    merged.upgradeLevel = {
+      ...defaults.upgradeLevel,
+      ...((player.upgradeLevel && typeof player.upgradeLevel === 'object' && !Array.isArray(player.upgradeLevel)) ? player.upgradeLevel : {}),
+    };
+
+    const numberFields = ['gold', 'hull', 'maxHull', 'cannons', 'speed', 'cargoCapacity', 'crew', 'maxCrew', 'morale', 'reputation', 'x', 'y', 'day', 'enemiesDefeated'];
+    numberFields.forEach((field) => {
+      const value = Number(merged[field]);
+      merged[field] = Number.isFinite(value) ? value : defaults[field];
+    });
+
+    merged.gold = Math.max(0, Math.floor(merged.gold));
+    merged.maxHull = Math.max(1, Math.floor(merged.maxHull));
+    merged.hull = Phaser.Math.Clamp(Math.floor(merged.hull), 0, merged.maxHull);
+    merged.cannons = Math.max(0, Math.floor(merged.cannons));
+    merged.speed = Math.max(1, Math.floor(merged.speed));
+    merged.cargoCapacity = Math.max(0, Math.floor(merged.cargoCapacity));
+    merged.maxCrew = Math.max(1, Math.floor(merged.maxCrew));
+    merged.crew = Phaser.Math.Clamp(Math.floor(merged.crew), 0, merged.maxCrew);
+    merged.morale = Phaser.Math.Clamp(Math.floor(merged.morale), 0, 100);
+    merged.reputation = Math.floor(merged.reputation);
+    merged.x = Phaser.Math.Clamp(merged.x, 20, MAP_W - 20);
+    merged.y = Phaser.Math.Clamp(merged.y, 20, MAP_H - 20);
+    merged.day = Math.max(1, Math.floor(merged.day));
+    merged.enemiesDefeated = Math.max(0, Math.floor(merged.enemiesDefeated));
+
+    Object.keys(merged.upgradeLevel).forEach((key) => {
+      const upgrade = UPGRADES.find(u => u.id === key);
+      const maxLevel = upgrade ? upgrade.maxLevel : 0;
+      const lvl = Math.floor(Number(merged.upgradeLevel[key]));
+      merged.upgradeLevel[key] = Number.isFinite(lvl) ? Phaser.Math.Clamp(lvl, 0, maxLevel) : 0;
+    });
+
+    const validGoodIds = new Set(GOODS.map(g => g.id));
+    let usedCargo = 0;
+    Object.keys(merged.cargo).forEach((key) => {
+      const qty = Math.floor(Number(merged.cargo[key]));
+      if (!validGoodIds.has(key) || !Number.isFinite(qty) || qty <= 0 || usedCargo >= merged.cargoCapacity) {
+        delete merged.cargo[key];
+        return;
+      }
+      const clampedQty = Math.min(qty, merged.cargoCapacity - usedCargo);
+      merged.cargo[key] = clampedQty;
+      usedCargo += clampedQty;
+    });
+
+    return merged;
+  }
+
   // ── World building ────────────────────────────────────────────────────────
 
 
@@ -80,14 +137,16 @@ export class GameScene extends Phaser.Scene {
       const pad = 10;
       const bx = pad + btnSize;
       const by = H - pad - btnSize;
-      this.mobileArrows.up.setPosition(bx, by - btnSize - pad);
-      this.mobileArrows.upText.setPosition(bx, by - btnSize - pad);
-      this.mobileArrows.down.setPosition(bx, by + btnSize + pad);
-      this.mobileArrows.downText.setPosition(bx, by + btnSize + pad);
-      this.mobileArrows.left.setPosition(bx - btnSize - pad, by);
-      this.mobileArrows.leftText.setPosition(bx - btnSize - pad, by);
-      this.mobileArrows.right.setPosition(bx + btnSize + pad, by);
-      this.mobileArrows.rightText.setPosition(bx + btnSize + pad, by);
+      this.mobileArrows.up.bg.setPosition(bx, by - btnSize - pad);
+      this.mobileArrows.up.txt.setPosition(bx, by - btnSize - pad);
+      this.mobileArrows.down.bg.setPosition(bx, by + btnSize + pad);
+      this.mobileArrows.down.txt.setPosition(bx, by + btnSize + pad);
+      this.mobileArrows.left.bg.setPosition(bx - btnSize - pad, by);
+      this.mobileArrows.left.txt.setPosition(bx - btnSize - pad, by);
+      this.mobileArrows.right.bg.setPosition(bx + btnSize + pad, by);
+      this.mobileArrows.right.txt.setPosition(bx + btnSize + pad, by);
+      this.mobileArrows.center.bg.setPosition(bx, by);
+      this.mobileArrows.center.txt.setPosition(bx, by);
     }
 
     // Reposition HUD
@@ -104,10 +163,15 @@ export class GameScene extends Phaser.Scene {
     }
 
     if (this.inCombat && this.enemy) {
+      const logText = this.combatLog ? this.combatLog.text : '';
+      const resolving = this.combatResolving;
       this.combatPanel.setVisible(false);
       this.buildCombatUI();
-      this.startCombat(this.enemy);
+      this.combatResolving = resolving;
       this.combatPanel.setVisible(true);
+      this.combatTitle.setText(`ATTACK! — ${this.enemy.name}`);
+      this.updateCombatStats();
+      this.combatLog.setText(logText || 'An enemy ship attacks!\nPrepare for battle!');
     }
 
     if (this.eventPanel && this.eventPanel.visible) {
@@ -311,17 +375,24 @@ export class GameScene extends Phaser.Scene {
       const t = this.add.text(x, y, label, { fontSize: '18px', fill: '#88cc88', fontFamily: 'Courier New' })
         .setOrigin(0.5).setScrollFactor(0).setDepth(61);
 
-      bg.on('pointerdown', () => { this.mobileVel.x = vx; this.mobileVel.y = vy; });
+      bg.on('pointerdown', (pointer, localX, localY, event) => {
+        if (event) event.stopPropagation();
+        this.moveTarget = null;
+        this.mobileVel.x = vx;
+        this.mobileVel.y = vy;
+      });
       bg.on('pointerup', () => { this.mobileVel.x = 0; this.mobileVel.y = 0; });
       bg.on('pointerout', () => { this.mobileVel.x = 0; this.mobileVel.y = 0; });
-      return bg;
+      return { bg, txt: t };
     };
 
-    makeArrow(bx, by - btnSize - pad, '▲', 0, -1);
-    makeArrow(bx, by + btnSize + pad, '▼', 0, 1);
-    makeArrow(bx - btnSize - pad, by, '◄', -1, 0);
-    makeArrow(bx + btnSize + pad, by, '►', 1, 0);
-    makeArrow(bx, by, '·', 0, 0);
+    this.mobileArrows = {
+      up: makeArrow(bx, by - btnSize - pad, '▲', 0, -1),
+      down: makeArrow(bx, by + btnSize + pad, '▼', 0, 1),
+      left: makeArrow(bx - btnSize - pad, by, '◄', -1, 0),
+      right: makeArrow(bx + btnSize + pad, by, '►', 1, 0),
+      center: makeArrow(bx, by, '·', 0, 0),
+    };
   }
 
   // ── Port UI ───────────────────────────────────────────────────────────────
@@ -742,6 +813,7 @@ export class GameScene extends Phaser.Scene {
 
   startCombat(enemy) {
     this.inCombat = true;
+    this.combatResolving = false;
     this.enemy = enemy;
     this.combatPanel.setVisible(true);
     this.combatTitle.setText(`ATTACK! — ${enemy.name}`);
@@ -761,7 +833,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   combatFire() {
-    if (!this.inCombat) return;
+    if (!this.inCombat || this.combatResolving) return;
     const p = this.player;
     const e = this.enemy;
     const crewBonus  = Math.max(0.5, p.crew / p.maxCrew);
@@ -772,6 +844,7 @@ export class GameScene extends Phaser.Scene {
 
     if (e.hull <= 0) {
       e.hull = 0;
+      this.combatResolving = true;
       this.updateCombatStats();
       this.combatLog.setText(log + '\nENEMY DEFEATED!');
       this.time.delayedCall(1200, () => this.endCombat(true));
@@ -785,6 +858,7 @@ export class GameScene extends Phaser.Scene {
 
     if (p.hull <= 0) {
       p.hull = 0;
+      this.combatResolving = true;
       this.updateCombatStats();
       this.combatLog.setText(log + '\nYOUR SHIP IS SINKING!');
       this.time.delayedCall(1200, () => this.endCombat(false));
@@ -796,7 +870,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   combatRepair() {
-    if (!this.inCombat) return;
+    if (!this.inCombat || this.combatResolving) return;
     const p = this.player;
     const e = this.enemy;
     const repairAmt = Math.round(p.crew * 1.5 + Phaser.Math.Between(2, 6));
@@ -809,6 +883,7 @@ export class GameScene extends Phaser.Scene {
 
     if (p.hull <= 0) {
       p.hull = 0;
+      this.combatResolving = true;
       this.updateCombatStats();
       this.combatLog.setText(log + '\nYOUR SHIP IS SINKING!');
       this.time.delayedCall(1200, () => this.endCombat(false));
@@ -820,11 +895,12 @@ export class GameScene extends Phaser.Scene {
   }
 
   combatFlee() {
-    if (!this.inCombat) return;
+    if (!this.inCombat || this.combatResolving) return;
     const p = this.player;
     const e = this.enemy;
     const fleeChance = Math.min(0.8, (p.speed / 200) + (p.crew / p.maxCrew) * 0.2);
     if (Math.random() < fleeChance) {
+      this.combatResolving = true;
       this.combatLog.setText('You escape! (Barely...)');
       this.time.delayedCall(900, () => this.endCombat(null));
     } else {
@@ -833,6 +909,7 @@ export class GameScene extends Phaser.Scene {
       let log = `Escape failed! Enemy hits for ${eDmg} damage.`;
       if (p.hull <= 0) {
         p.hull = 0;
+        this.combatResolving = true;
         this.updateCombatStats();
         this.combatLog.setText(log + '\nYOUR SHIP IS SINKING!');
         this.time.delayedCall(1200, () => this.endCombat(false));
@@ -844,8 +921,10 @@ export class GameScene extends Phaser.Scene {
   }
 
   endCombat(won) {
+    if (!this.inCombat && !this.combatResolving) return;
     this.inCombat = false;
-    this.combatPanel.setVisible(false);
+    this.combatResolving = false;
+    if (this.combatPanel) this.combatPanel.setVisible(false);
     const p = this.player;
 
     if (won === true) {
@@ -1018,12 +1097,13 @@ export class GameScene extends Phaser.Scene {
         this.eventBtn2.txt.setText('RUN!');
         this.eventBtn1.bg.on('pointerdown', () => {
           p.gold -= fine;
-          p.hull = Math.max(1, p.hull - dmg);
+          p.hull -= dmg;
+          if (p.hull <= 0) { this.triggerGameOver(); return; }
           saveGame(p); this.refreshHUD();
           this.eventPanel.setVisible(false);
         });
         this.eventBtn2.bg.on('pointerdown', () => {
-          p.hull = Math.max(1, p.hull - dmg * 2);
+          p.hull -= dmg * 2;
           if (p.hull <= 0) { this.triggerGameOver(); return; }
           saveGame(p); this.refreshHUD();
           this.eventPanel.setVisible(false);
@@ -1059,6 +1139,7 @@ export class GameScene extends Phaser.Scene {
     const newBg = this.add.rectangle(W / 2, H * 0.68, 200, 44, 0x1a6e2e).setInteractive({ useHandCursor: true }).setStrokeStyle(2, 0xffd700);
     const newTxt = this.add.text(W / 2, H * 0.68, 'NEW GAME', { fontSize: '16px', fill: '#fff', fontFamily: 'Courier New', fontStyle: 'bold' }).setOrigin(0.5);
     newBg.on('pointerdown', () => {
+      deleteSave();
       this.registry.set('player', JSON.parse(JSON.stringify(INITIAL_PLAYER)));
       this.scene.start('MenuScene');
     });
@@ -1069,7 +1150,10 @@ export class GameScene extends Phaser.Scene {
   triggerGameOver() {
     this.gameOver = true;
     this.inCombat = false;
-    this.combatPanel.setVisible(false);
+    this.combatResolving = false;
+    if (this.combatPanel) this.combatPanel.setVisible(false);
+    if (this.eventPanel) this.eventPanel.setVisible(false);
+    deleteSave();
     const p = this.player;
     this.gameOverStats.setText(
       `Gold earned: ${p.gold}\nDays survived: ${p.day}\nEnemies defeated: ${p.enemiesDefeated || 0}\nReputation: ${p.reputation}`
@@ -1086,6 +1170,34 @@ export class GameScene extends Phaser.Scene {
       stroke: '#000', strokeThickness: 3, backgroundColor: '#00000088', padding: { x: 8, y: 4 },
     }).setOrigin(0.5).setScrollFactor(0).setDepth(99);
     this.tweens.add({ targets: t, alpha: 0, y: t.y - 30, duration: 1800, ease: 'Power2', onComplete: () => t.destroy() });
+  }
+
+
+  isPointerOnFixedUI(pointer) {
+    const x = pointer.x;
+    const y = pointer.y;
+    const W = this.scale.width;
+    const H = this.scale.height;
+
+    if (x <= 230 && y <= 122) return true;
+
+    if (this.dockBtn && this.dockBtn.visible) {
+      const b = this.dockBtn.getBounds();
+      if (Phaser.Geom.Rectangle.Contains(b, x, y)) return true;
+    }
+
+    if (this.mobileArrows) {
+      for (const key of Object.keys(this.mobileArrows)) {
+        const b = this.mobileArrows[key].bg.getBounds();
+        if (Phaser.Geom.Rectangle.Contains(b, x, y)) return true;
+      }
+    }
+
+    // Keep taps on the bottom mobile-control strip and HUD area from becoming map targets.
+    if (x <= 128 && y >= H - 178) return true;
+    if (y < 4 || x < 4 || x > W - 4 || y > H - 4) return true;
+
+    return false;
   }
 
   // ── Update loop ───────────────────────────────────────────────────────────
@@ -1214,7 +1326,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   onMapTap(pointer) {
-    if (this.portUIOpen || this.inCombat || this.gameOver) return;
+    if (this.portUIOpen || this.inCombat || this.gameOver || this.isPointerOnFixedUI(pointer)) return;
     // Convert screen coords to world coords
     const wx = pointer.worldX;
     const wy = pointer.worldY;
