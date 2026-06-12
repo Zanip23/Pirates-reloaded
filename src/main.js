@@ -1,23 +1,16 @@
 import Phaser from 'phaser';
+import { BootScene } from './scenes/BootScene.js';
 import { MenuScene } from './scenes/MenuScene.js';
 import { GameScene } from './scenes/GameScene.js';
-
-function getGameSize() {
-  return {
-    width:  Math.min(window.innerWidth,  800),
-    height: Math.min(window.innerHeight, 600),
-  };
-}
-
-const size = getGameSize();
+import { PortScene } from './scenes/PortScene.js';
 
 const config = {
   type: Phaser.AUTO,
-  width:  size.width,
-  height: size.height,
-  backgroundColor: '#081420',
+  width: window.innerWidth,
+  height: window.innerHeight,
+  backgroundColor: '#1672ae',
   parent: 'game-container',
-  scene: [MenuScene, GameScene],
+  scene: [BootScene, MenuScene, GameScene, PortScene],
   scale: {
     mode: Phaser.Scale.RESIZE,
     autoCenter: Phaser.Scale.NO_CENTER,
@@ -25,12 +18,13 @@ const config = {
   render: {
     pixelArt: true,
     antialias: false,
+    roundPixels: true,
   },
 };
 
 const game = new Phaser.Game(config);
+window.game = game; // debugging & test access
 
-// Resize handler — restart current scene on major resize
 let resizeTimeout;
 window.addEventListener('resize', () => {
   clearTimeout(resizeTimeout);

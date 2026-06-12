@@ -1,6 +1,7 @@
 # Black Tide Trader
 
-A retro 2D top-down pirate trading game built with Phaser 3. Inspired by classic C64/Amiga games.
+Ein Retro-Piraten-Handelsspiel in Pixel-Art, gebaut mit Phaser 3.
+Helle Karibik, eine Steuerung für alles, echte Seeschlachten auf offener See.
 
 ## Installation
 
@@ -8,65 +9,59 @@ A retro 2D top-down pirate trading game built with Phaser 3. Inspired by classic
 npm install
 ```
 
-## Start (dev server)
+## Start (Dev-Server)
 
 ```bash
 npm run dev
 ```
 
-Then open `http://localhost:5173` in your browser.
+Dann `http://localhost:5173` im Browser öffnen.
 
-## Build for production
+## Produktions-Build
 
 ```bash
 npm run build
 npm run preview
 ```
 
-## Controls
+## Steuerung — eine für alles
 
-### Desktop
-- **WASD** or **Arrow Keys** — move ship
-- **Mouse** — click buttons, interact with UI
+- **Tippe oder klicke aufs Meer** — das Schiff segelt dorthin (PC und Handy identisch)
+- **Tippe auf einen Hafen** (oder den ANLEGEN-Knopf), wenn du nah genug bist
+- Im Kampf gilt dieselbe Steuerung: **segeln = ausweichen**, die Kanonen
+  feuern automatisch, sobald ein Feind in Reichweite ist
+- Pfeiltasten/WASD funktionieren am PC als stille Alternative
 
-### Mobile / Touchscreen
-- **Tap on the ocean** — ship sails to that point
-- **Arrow buttons** (bottom-left) — direct movement
-- **Tap DOCK button** — enter a port when nearby
+## Spielprinzip: Risiko nach Wahl
 
-## Gameplay
+Die Karte ist in drei Zonen geteilt — je weiter östlich, desto gefährlicher
+und desto fetter die Gewinne:
 
-1. Sail your ship across the open ocean between 6 ports
-2. Buy cheap goods at ports that produce them
-3. Sell for profit at ports that need them
-4. Survive random encounters: pirate attacks, storms, driftwood, merchants
-5. Use gold to upgrade your ship at the Shipyard
-6. Hire crew and boost morale at the Tavern
-7. Progress to tougher routes for bigger rewards
+| Zone | Gefahr | Häfen |
+|---|---|---|
+| Heimatgewässer | keine Piraten | Port Haven, Kingsport |
+| Offene See | Freibeuter & Korsaren | Redreef, San Cordoba, Isla Verde |
+| Schwarze Weiten | Schwarze Galeonen, Stürme | Blackwater Cay, Sturmfels |
 
-## Key Trade Routes
-- **Rum**: Buy cheap in Port Haven, sell in Kingsport
-- **Spices**: Buy in Isla Verde, sell in Blackwater Cay
-- **Wood**: Buy in Redreef, sell in San Cordoba
-- **Iron**: Buy in Kingsport, sell in Port Haven
-- **Cloth**: Buy in San Cordoba, sell in Redreef
-- **Tobacco**: Buy in Blackwater Cay, sell in Isla Verde
+1. Kaufe Waren günstig dort, wo sie produziert werden (★ GÜNSTIG)
+2. Verkaufe sie mit Gewinn dort, wo sie gebraucht werden (▲ GUTER PREIS)
+3. Investiere Gold in der **Werft**: Rumpf, Kanonen, Segel, Frachtraum
+4. Heuere in der **Taverne** Crew an und halte die Moral hoch
+5. Wage dich nach Osten: Edelsteine aus Sturmfels machen reich —
+   wenn du die Rückfahrt überlebst
 
-## Saving
-The game auto-saves to `localStorage` whenever you dock or after combat. Use "Continue" on the title screen to resume.
+In Sichtweite eines Hafens bist du vor Piraten sicher. Sinkt dein Schiff,
+ist das Spiel nicht vorbei: Du verlierst Fracht und einen Teil deines Goldes
+und strandest in Port Haven.
 
-## Known Limitations
-- No audio (clean omission — no broken placeholders)
-- No external image assets — all graphics are procedurally drawn with Phaser Graphics API
-- Map is fixed, not procedurally generated
-- No roaming NPC ships — events are random pop-ups during travel
+## Speichern
 
-## Possible Next Features
-- Animated NPC ships patrolling the ocean
-- Fog of war / explored map tracking
-- Ship name customisation at start
-- More goods, ports, and trade routes
-- Simple quest / mission system
-- Named crew members with traits
-- Sound effects via Web Audio API
-- Dynamic weather with visual effects
+Das Spiel speichert automatisch in `localStorage` (beim Anlegen, nach Kämpfen,
+bei Tageswechseln). „Weiterspielen" im Titelbildschirm setzt die Reise fort.
+
+## Technik
+
+- Alle Grafiken werden zur Laufzeit prozedural als Pixel-Art erzeugt
+  (`src/textures.js`) — keine externen Assets
+- Kein Audio (bewusst weggelassen, keine kaputten Platzhalter)
+- Szenen: Boot → Menü → Spiel (+ Hafen-Overlay)
