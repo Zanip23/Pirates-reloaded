@@ -289,13 +289,14 @@ export class PortScene extends Phaser.Scene {
       this.add.text(x, y + 6 + i * 22, line, textStyle(12, '#d8e8f0')).setOrigin(0, 0);
     });
 
-    this.add.text(x + w * 0.58, y + 6, 'FRACHTRAUM', textStyle(12, '#ffd23f')).setOrigin(0, 0);
+    const rightX = w < 320 ? x + w - 100 : x + w * 0.58;
+    this.add.text(rightX, y + 6, 'FRACHTRAUM', textStyle(12, '#ffd23f')).setOrigin(0, 0);
     const entries = GOODS.filter(g => (p.cargo[g.id] || 0) > 0);
     if (entries.length === 0) {
-      this.add.text(x + w * 0.58, y + 30, '(leer)', textStyle(11, '#7a868f')).setOrigin(0, 0);
+      this.add.text(rightX, y + 30, '(leer)', textStyle(11, '#7a868f')).setOrigin(0, 0);
     } else {
       entries.forEach((g, i) => {
-        this.add.text(x + w * 0.58, y + 30 + i * 20, `${g.name} ×${p.cargo[g.id]}`,
+        this.add.text(rightX, y + 30 + i * 20, `${g.name} ×${p.cargo[g.id]}`,
           textStyle(11, '#9fe8f0')).setOrigin(0, 0);
       });
     }

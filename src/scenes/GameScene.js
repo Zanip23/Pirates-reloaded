@@ -274,13 +274,13 @@ export class GameScene extends Phaser.Scene {
     if (narrow) {
       const row1 = stats.slice(0, 3);
       const row2 = stats.slice(3, 5);
-      const slice1 = Math.min(140, (W - 20) / 3);
+      const slice1 = (W - 10) / 3;
       row1.forEach((s, i) => {
         const x = 10 + i * slice1;
         s.img.setPosition(x + 8, 20);
         s.txt.setPosition(x + 20, 20);
       });
-      const slice2 = Math.min(140, (W - 20) / 2);
+      const slice2 = (W - 10) / 2;
       row2.forEach((s, i) => {
         const x = 10 + i * slice2;
         s.img.setPosition(x + 8, 50);
