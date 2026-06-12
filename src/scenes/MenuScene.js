@@ -1,5 +1,5 @@
 import { hasSave, deleteSave } from '../save.js';
-import { INITIAL_PLAYER } from '../data.js';
+import { INITIAL_PLAYER, clone } from '../data.js';
 import { SCALE } from '../textures.js';
 import { makeButton, textStyle } from '../ui.js';
 
