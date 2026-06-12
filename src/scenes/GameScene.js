@@ -1,5 +1,5 @@
 import { PORTS, GOODS, UPGRADES, RUMORS, INITIAL_PLAYER } from '../data.js';
-import { saveGame, loadGame } from '../save.js';
+import { saveGame, loadGame, deleteSave } from '../save.js';
 
 const MAP_W = 1200;
 const MAP_H = 800;
@@ -742,6 +742,7 @@ export class GameScene extends Phaser.Scene {
 
   startCombat(enemy) {
     this.inCombat = true;
+    this.combatResolving = false;
     this.enemy = enemy;
     this.combatPanel.setVisible(true);
     this.combatTitle.setText(`ATTACK! — ${enemy.name}`);
@@ -761,7 +762,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   combatFire() {
-    if (!this.inCombat) return;
+    if (!this.inCombat || this.combatResolving) return;
     const p = this.player;
     const e = this.enemy;
     const crewBonus  = Math.max(0.5, p.crew / p.maxCrew);
@@ -772,6 +773,7 @@ export class GameScene extends Phaser.Scene {
 
     if (e.hull <= 0) {
       e.hull = 0;
+      this.combatResolving = true;
       this.updateCombatStats();
       this.combatLog.setText(log + '\nENEMY DEFEATED!');
       this.time.delayedCall(1200, () => this.endCombat(true));
@@ -785,6 +787,7 @@ export class GameScene extends Phaser.Scene {
 
     if (p.hull <= 0) {
       p.hull = 0;
+      this.combatResolving = true;
       this.updateCombatStats();
       this.combatLog.setText(log + '\nYOUR SHIP IS SINKING!');
       this.time.delayedCall(1200, () => this.endCombat(false));
@@ -796,7 +799,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   combatRepair() {
-    if (!this.inCombat) return;
+    if (!this.inCombat || this.combatResolving) return;
     const p = this.player;
     const e = this.enemy;
     const repairAmt = Math.round(p.crew * 1.5 + Phaser.Math.Between(2, 6));
@@ -809,6 +812,7 @@ export class GameScene extends Phaser.Scene {
 
     if (p.hull <= 0) {
       p.hull = 0;
+      this.combatResolving = true;
       this.updateCombatStats();
       this.combatLog.setText(log + '\nYOUR SHIP IS SINKING!');
       this.time.delayedCall(1200, () => this.endCombat(false));
@@ -820,11 +824,12 @@ export class GameScene extends Phaser.Scene {
   }
 
   combatFlee() {
-    if (!this.inCombat) return;
+    if (!this.inCombat || this.combatResolving) return;
     const p = this.player;
     const e = this.enemy;
     const fleeChance = Math.min(0.8, (p.speed / 200) + (p.crew / p.maxCrew) * 0.2);
     if (Math.random() < fleeChance) {
+      this.combatResolving = true;
       this.combatLog.setText('You escape! (Barely...)');
       this.time.delayedCall(900, () => this.endCombat(null));
     } else {
@@ -832,20 +837,23 @@ export class GameScene extends Phaser.Scene {
       p.hull -= eDmg;
       let log = `Escape failed! Enemy hits for ${eDmg} damage.`;
       if (p.hull <= 0) {
-        p.hull = 0;
-        this.updateCombatStats();
-        this.combatLog.setText(log + '\nYOUR SHIP IS SINKING!');
-        this.time.delayedCall(1200, () => this.endCombat(false));
-        return;
-      }
+      p.hull = 0;
+      this.combatResolving = true;
+      this.updateCombatStats();
+      this.combatLog.setText(log + '\nYOUR SHIP IS SINKING!');
+      this.time.delayedCall(1200, () => this.endCombat(false));
+      return;
+    }
       this.updateCombatStats();
       this.combatLog.setText(log);
     }
   }
 
   endCombat(won) {
+    if (!this.inCombat && !this.combatResolving) return;
     this.inCombat = false;
-    this.combatPanel.setVisible(false);
+    this.combatResolving = false;
+    if (this.combatPanel) this.combatPanel.setVisible(false);
     const p = this.player;
 
     if (won === true) {
@@ -1018,12 +1026,13 @@ export class GameScene extends Phaser.Scene {
         this.eventBtn2.txt.setText('RUN!');
         this.eventBtn1.bg.on('pointerdown', () => {
           p.gold -= fine;
-          p.hull = Math.max(1, p.hull - dmg);
+          p.hull -= dmg;
+          if (p.hull <= 0) { this.triggerGameOver(); return; }
           saveGame(p); this.refreshHUD();
           this.eventPanel.setVisible(false);
         });
         this.eventBtn2.bg.on('pointerdown', () => {
-          p.hull = Math.max(1, p.hull - dmg * 2);
+          p.hull -= dmg * 2;
           if (p.hull <= 0) { this.triggerGameOver(); return; }
           saveGame(p); this.refreshHUD();
           this.eventPanel.setVisible(false);
@@ -1059,6 +1068,7 @@ export class GameScene extends Phaser.Scene {
     const newBg = this.add.rectangle(W / 2, H * 0.68, 200, 44, 0x1a6e2e).setInteractive({ useHandCursor: true }).setStrokeStyle(2, 0xffd700);
     const newTxt = this.add.text(W / 2, H * 0.68, 'NEW GAME', { fontSize: '16px', fill: '#fff', fontFamily: 'Courier New', fontStyle: 'bold' }).setOrigin(0.5);
     newBg.on('pointerdown', () => {
+      deleteSave();
       this.registry.set('player', JSON.parse(JSON.stringify(INITIAL_PLAYER)));
       this.scene.start('MenuScene');
     });
@@ -1069,7 +1079,10 @@ export class GameScene extends Phaser.Scene {
   triggerGameOver() {
     this.gameOver = true;
     this.inCombat = false;
-    this.combatPanel.setVisible(false);
+    this.combatResolving = false;
+    if (this.combatPanel) this.combatPanel.setVisible(false);
+    if (this.eventPanel) this.eventPanel.setVisible(false);
+    deleteSave();
     const p = this.player;
     this.gameOverStats.setText(
       `Gold earned: ${p.gold}\nDays survived: ${p.day}\nEnemies defeated: ${p.enemiesDefeated || 0}\nReputation: ${p.reputation}`
@@ -1214,7 +1227,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   onMapTap(pointer) {
-    if (this.portUIOpen || this.inCombat || this.gameOver) return;
+    if (this.portUIOpen || this.inCombat || this.gameOver || this.isPointerOnFixedUI(pointer)) return;
     // Convert screen coords to world coords
     const wx = pointer.worldX;
     const wy = pointer.worldY;
