@@ -25,6 +25,9 @@ export function textStyle(size, color, extra = {}) {
     color,
     stroke: '#0a1420',
     strokeThickness: Math.max(2, Math.round(size / 6)),
+    // render text at device resolution so it stays sharp when UI containers
+    // are scaled down to fit small screens
+    resolution: Math.min(3, window.devicePixelRatio || 1),
     ...extra,
   };
 }
@@ -92,6 +95,7 @@ export function showToast(scene, msg, color = '#ffd23f') {
   const t = scene.add.text(W / 2, scene.scale.height * 0.3, msg,
     textStyle(15, color, { backgroundColor: '#0a1420dd', padding: { x: 10, y: 6 } })
   ).setOrigin(0.5).setScrollFactor(0).setDepth(200);
+  if (scene.uiLayer) scene.uiLayer.add(t); // keep toasts out of the zoomed world camera
   scene.tweens.add({
     targets: t, alpha: 0, y: t.y - 36, duration: 1900, ease: 'Power2',
     onComplete: () => t.destroy(),

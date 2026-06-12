@@ -40,6 +40,14 @@ export class GameScene extends Phaser.Scene {
     this.wrecked = false;
     this.balls = [];
 
+    // Two render layers: camera zoom scales EVERYTHING it renders — even
+    // scrollFactor(0) objects — so the HUD gets its own camera. The main
+    // camera ignores the UI layer, the UI camera ignores the world layer.
+    this.worldLayer = this.add.layer();
+    this.uiLayer = this.add.layer().setDepth(1000);
+    this.toWorld = obj => { this.worldLayer.add(obj); return obj; };
+    this.toUI = obj => { this.uiLayer.add(obj); return obj; };
+
     this.buildWorld();
     this.buildShip();
     this.buildPirates();
@@ -53,6 +61,10 @@ export class GameScene extends Phaser.Scene {
     cam.startFollow(this.ship, true, 0.08, 0.08);
     cam.setBackgroundColor(0x1672ae);
     this.applyZoom();
+
+    this.uiCam = this.cameras.add(0, 0, this.scale.width, this.scale.height);
+    this.uiCam.ignore(this.worldLayer);
+    cam.ignore(this.uiLayer);
 
     // ── Input: one control everywhere — tap/click the sea to sail ─
     this.input.on('pointerdown', this.onSeaPointer, this);
@@ -95,11 +107,11 @@ export class GameScene extends Phaser.Scene {
   // ── World ──────────────────────────────────────────────────────────────────
 
   buildWorld() {
-    this.water = this.add.tileSprite(0, 0, MAP_W, MAP_H, 'water0')
-      .setOrigin(0).setDepth(0).setTileScale(SCALE);
+    this.water = this.toWorld(this.add.tileSprite(0, 0, MAP_W, MAP_H, 'water0')
+      .setOrigin(0).setDepth(0).setTileScale(SCALE));
 
     // risk band tinting — east gets darker and meaner
-    const bands = this.add.graphics().setDepth(1);
+    const bands = this.toWorld(this.add.graphics().setDepth(1));
     bands.fillStyle(0x9fe8f0, 0.07);
     bands.fillRect(0, 0, ZONES[0].maxX, MAP_H);
     bands.fillStyle(0x0a2050, 0.10);
@@ -115,32 +127,32 @@ export class GameScene extends Phaser.Scene {
       [1700, 1450], [2200, 250], [300, 1450], [1500, 1150],
     ];
     islets.forEach(([x, y]) => {
-      this.add.image(x, y, 'islet').setScale(SCALE).setDepth(2);
+      this.toWorld(this.add.image(x, y, 'islet').setScale(SCALE).setDepth(2));
     });
 
     // ports
     this.portViews = PORTS.map(port => {
-      const img = this.add.image(port.x, port.y, port.zone === 2 ? 'islandDanger' : 'islandSafe')
-        .setScale(SCALE).setDepth(3);
+      const img = this.toWorld(this.add.image(port.x, port.y, port.zone === 2 ? 'islandDanger' : 'islandSafe')
+        .setScale(SCALE).setDepth(3));
       img.setInteractive({ useHandCursor: true });
       img.on('pointerdown', () => {
         if (this.distTo(port.x, port.y) < DOCK_DIST) this.openPort(port);
       });
-      this.add.text(port.x, port.y + 86, port.name,
+      this.toWorld(this.add.text(port.x, port.y + 86, port.name,
         textStyle(13, port.zone === 2 ? '#ffb0a0' : '#fff3c8')
-      ).setOrigin(0.5, 0).setDepth(4);
+      ).setOrigin(0.5, 0).setDepth(4));
       return { port, img };
     });
 
     // sail-target flag
-    this.flag = this.add.image(0, 0, 'flagMarker').setScale(SCALE).setDepth(5).setVisible(false);
+    this.flag = this.toWorld(this.add.image(0, 0, 'flagMarker').setScale(SCALE).setDepth(5).setVisible(false));
     this.tweens.add({ targets: this.flag, y: '-=6', duration: 500, yoyo: true, repeat: -1 });
   }
 
   buildShip() {
     const p = this.player;
-    this.ship = this.add.image(p.x, p.y, 'shipPlayer').setScale(SCALE).setDepth(10);
-    this.wake = this.add.graphics().setDepth(9);
+    this.ship = this.toWorld(this.add.image(p.x, p.y, 'shipPlayer').setScale(SCALE).setDepth(10));
+    this.wake = this.toWorld(this.add.graphics().setDepth(9));
   }
 
   buildPirates() {
@@ -164,8 +176,8 @@ export class GameScene extends Phaser.Scene {
       tries++;
     } while (tries < 30 && (this.nearAnyPort(x, y) || this.distTo(x, y) < 500));
 
-    const spr = this.add.image(x, y, tier.texture).setScale(SCALE).setDepth(8);
-    const bar = this.add.graphics().setDepth(11);
+    const spr = this.toWorld(this.add.image(x, y, tier.texture).setScale(SCALE).setDepth(8));
+    const bar = this.toWorld(this.add.graphics().setDepth(11));
     const pirate = {
       spr, bar, tierIdx, tier, zone,
       hull: tier.hull,
@@ -187,7 +199,7 @@ export class GameScene extends Phaser.Scene {
     this.storms = [];
     const spots = [[1300, 200], [1500, 1300], [2100, 800]];
     spots.forEach(([x, y]) => {
-      const c = this.add.container(x, y).setDepth(20).setAlpha(0.9);
+      const c = this.toWorld(this.add.container(x, y).setDepth(20).setAlpha(0.9));
       [[-40, -10], [30, -22], [0, 14], [-15, -30], [40, 18]].forEach(([ox, oy]) => {
         c.add(this.add.image(ox, oy, 'cloud').setScale(SCALE * Phaser.Math.FloatBetween(0.8, 1.3)));
       });
@@ -214,7 +226,7 @@ export class GameScene extends Phaser.Scene {
       tries++;
     } while (tries < 20 && this.nearAnyPort(x, y));
     if (this.nearAnyPort(x, y)) return;
-    const spr = this.add.image(x, y, 'crate').setScale(SCALE).setDepth(6);
+    const spr = this.toWorld(this.add.image(x, y, 'crate').setScale(SCALE).setDepth(6));
     this.tweens.add({ targets: spr, angle: 8, duration: 1200, yoyo: true, repeat: -1 });
     this.crates.push({ spr, zone: zoneAt(x) });
   }
@@ -222,7 +234,7 @@ export class GameScene extends Phaser.Scene {
   // ── HUD ────────────────────────────────────────────────────────────────────
 
   buildHUD() {
-    this.hud = this.add.container(0, 0).setScrollFactor(0).setDepth(100);
+    this.hud = this.toUI(this.add.container(0, 0).setScrollFactor(0).setDepth(100));
 
     this.hudBg = this.add.rectangle(0, 0, 10, 40, 0x0a1420, 0.82).setOrigin(0);
     this.hudBg.setStrokeStyle(2, COLORS.panelEdge);
@@ -244,16 +256,16 @@ export class GameScene extends Phaser.Scene {
     this.hud.add(this.zoneTxt);
 
     // minimap
-    this.minimap = this.add.graphics().setScrollFactor(0).setDepth(100);
+    this.minimap = this.toUI(this.add.graphics().setScrollFactor(0).setDepth(100));
 
     // dock button (bottom center, thumb-friendly)
     this.dockBtn = null;
 
     // menu (anchor) button
-    this.menuBtn = makeButton(this, 0, 0, 44, 38, '⚓', 'normal', () => {
+    this.menuBtn = this.toUI(makeButton(this, 0, 0, 44, 38, '⚓', 'normal', () => {
       saveGame(this.player);
       this.scene.start('MenuScene');
-    });
+    }));
     this.menuBtn.setScrollFactor(0).setDepth(101);
     this.menuBtn.list.forEach(o => o.setScrollFactor(0));
 
@@ -261,9 +273,13 @@ export class GameScene extends Phaser.Scene {
   }
 
   layout() {
-    if (!this.scene.isActive()) return;
+    // NOTE: don't gate on scene.isActive() — during create() the scene is
+    // still CREATING, which silently skipped the initial layout and left the
+    // whole HUD stacked at (0,0).
+    if (!this.hudBg) return;
     this.applyZoom();
     const W = this.scale.width;
+    if (this.uiCam) this.uiCam.setSize(W, this.scale.height);
     const narrow = W < 500;
     const bgHeight = narrow ? 70 : 40;
 
@@ -356,8 +372,8 @@ export class GameScene extends Phaser.Scene {
     if (this.dockBtn) { this.dockBtn.destroy(); this.dockBtn = null; }
     if (!this.nearPort) return;
     const W = this.scale.width, H = this.scale.height;
-    this.dockBtn = makeButton(this, W / 2, H - 56, Math.min(320, W - 30), 56,
-      `⚓ ANLEGEN: ${this.nearPort.name}`, 'gold', () => this.openPort(this.nearPort));
+    this.dockBtn = this.toUI(makeButton(this, W / 2, H - 56, Math.min(320, W - 30), 56,
+      `⚓ ANLEGEN: ${this.nearPort.name}`, 'gold', () => this.openPort(this.nearPort)));
     this.dockBtn.setScrollFactor(0).setDepth(110);
     this.dockBtn.list.forEach(o => o.setScrollFactor(0));
   }
@@ -502,7 +518,7 @@ export class GameScene extends Phaser.Scene {
     const dx = targetSpr.x - fromSpr.x;
     const dy = targetSpr.y - fromSpr.y;
     const a = Math.atan2(dy, dx) + Phaser.Math.FloatBetween(-0.07, 0.07);
-    const spr = this.add.image(fromSpr.x, fromSpr.y, 'ball').setScale(SCALE).setDepth(12);
+    const spr = this.toWorld(this.add.image(fromSpr.x, fromSpr.y, 'ball').setScale(SCALE).setDepth(12));
     this.balls.push({
       spr, friendly, dmg,
       vx: Math.cos(a) * BALL_SPEED,
@@ -546,7 +562,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   effect(anim, tex, x, y) {
-    const s = this.add.sprite(x, y, tex, '0').setScale(SCALE).setDepth(13);
+    const s = this.toWorld(this.add.sprite(x, y, tex, '0').setScale(SCALE).setDepth(13));
     s.play(anim);
     s.once('animationcomplete', () => s.destroy());
   }
@@ -764,7 +780,7 @@ export class GameScene extends Phaser.Scene {
 
     this.time.delayedCall(1200, () => {
       const W = this.scale.width, H = this.scale.height;
-      const panel = this.add.container(0, 0).setScrollFactor(0).setDepth(150);
+      const panel = this.toUI(this.add.container(0, 0).setScrollFactor(0).setDepth(150));
       const dim = this.add.rectangle(0, 0, W, H, 0x0a1420, 0.85).setOrigin(0).setInteractive();
       const title = this.add.text(W / 2, H * 0.26, 'SCHIFFBRUCH!', textStyle(30, '#ff6050')).setOrigin(0.5);
       const lines = [
@@ -788,6 +804,7 @@ export class GameScene extends Phaser.Scene {
       });
       panel.add([dim, title, body]);
       panel.list.forEach(o => o.setScrollFactor(0));
+      this.toUI(btn);
       btn.setScrollFactor(0).setDepth(151);
       btn.list.forEach(o => o.setScrollFactor(0));
     });
