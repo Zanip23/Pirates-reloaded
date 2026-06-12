@@ -264,20 +264,39 @@ export class GameScene extends Phaser.Scene {
     if (!this.scene.isActive()) return;
     this.applyZoom();
     const W = this.scale.width;
+    const narrow = W < 500;
+    const bgHeight = narrow ? 70 : 40;
 
-    this.hudBg.setSize(W, 40);
-    if (this.hudBg.input) this.hudBg.input.hitArea.setSize(W, 40);
+    this.hudBg.setSize(W, bgHeight);
+    if (this.hudBg.input) this.hudBg.input.hitArea.setSize(W, bgHeight);
 
     const stats = [this.stGold, this.stHull, this.stCargo, this.stCrew, this.stDay];
-    const slice = Math.min(140, (W - 60) / stats.length);
-    stats.forEach((s, i) => {
-      const x = 14 + i * slice;
-      s.img.setPosition(x + 8, 20);
-      s.txt.setPosition(x + 20, 20);
-    });
-    this.zoneTxt.setPosition(W / 2, 44);
+    if (narrow) {
+      const row1 = stats.slice(0, 3);
+      const row2 = stats.slice(3, 5);
+      const slice1 = Math.min(140, (W - 20) / 3);
+      row1.forEach((s, i) => {
+        const x = 10 + i * slice1;
+        s.img.setPosition(x + 8, 20);
+        s.txt.setPosition(x + 20, 20);
+      });
+      const slice2 = Math.min(140, (W - 20) / 2);
+      row2.forEach((s, i) => {
+        const x = 10 + i * slice2;
+        s.img.setPosition(x + 8, 50);
+        s.txt.setPosition(x + 20, 50);
+      });
+    } else {
+      const slice = Math.min(140, (W - 60) / stats.length);
+      stats.forEach((s, i) => {
+        const x = 14 + i * slice;
+        s.img.setPosition(x + 8, 20);
+        s.txt.setPosition(x + 20, 20);
+      });
+    }
 
-    this.menuBtn.setPosition(W - 32, 70);
+    this.zoneTxt.setPosition(W / 2, bgHeight + 8);
+    this.menuBtn.setPosition(W - 32, bgHeight + 26);
 
     this.drawMinimap();
     this.positionDockBtn();
@@ -298,13 +317,16 @@ export class GameScene extends Phaser.Scene {
   drawMinimap() {
     const g = this.minimap;
     const W = this.scale.width;
-    const mw = 132, mh = mw * (MAP_H / MAP_W);
-    const mx = W - mw - 10, my = 96;
+    const mw = Math.min(132, W * 0.28);
+    const mh = mw * (MAP_H / MAP_W);
+    const narrow = W < 500;
+    const my = narrow ? 104 : 96; // slightly lower if on narrow to stay under menu button
+    const mx = W - mw - 10;
     const sx = mw / MAP_W, sy = mh / MAP_H;
     g.clear();
-    g.fillStyle(0x0a1420, 0.85);
+    g.fillStyle(0x0a1420, 0.4);
     g.fillRect(mx - 3, my - 3, mw + 6, mh + 6);
-    g.fillStyle(0x1672ae, 1);
+    g.fillStyle(0x1672ae, 0.6); // more transparent water on minimap
     g.fillRect(mx, my, mw, mh);
     g.fillStyle(0x9fe8f0, 0.18);
     g.fillRect(mx, my, ZONES[0].maxX * sx, mh);
