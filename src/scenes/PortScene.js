@@ -115,10 +115,10 @@ export class PortScene extends Phaser.Scene {
 
   buildMarket(x, y, w, h) {
     const p = this.player;
-    const rowH = Math.min(56, Math.floor((h - 20) / GOODS.length));
+    const rowH = Math.min(56, Math.floor((h - 28) / GOODS.length));
 
     GOODS.forEach((good, gi) => {
-      const ry = y + 10 + gi * rowH;
+      const ry = y + 18 + gi * rowH;
       const pr = this.goodPrices(good, gi);
       const owned = p.cargo[good.id] || 0;
 
