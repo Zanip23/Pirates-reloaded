@@ -2,10 +2,12 @@ import { PORTS, GOODS, UPGRADES, RUMORS, priceWobble, shipStats } from '../data.
 import { saveGame } from '../save.js';
 import { makeButton, makePanel, showToast, textStyle } from '../ui.js';
 
-// The whole port panel is laid out once in this fixed design space and then
-// scaled as a unit to fit the screen. That keeps every text/button relation
-// identical on all devices — no per-breakpoint special cases that can drift.
-const PANEL_W = 480;
+// The port panel is laid out in a design space and scaled as a unit to fit
+// the screen. The design WIDTH adapts to the screen (400–480) so that on
+// phones the scale stays at 1 and text renders at native size — scaling
+// down only kicks in on very narrow or very short screens.
+const PANEL_MAX_W = 480;
+const PANEL_MIN_W = 400;
 const PANEL_H = 640;
 
 // Overlay scene shown while docked. The GameScene stays paused underneath.
@@ -40,7 +42,8 @@ export class PortScene extends Phaser.Scene {
     const W = this.scale.width, H = this.scale.height;
     this.add.rectangle(0, 0, W, H, 0x0a1420, 0.55).setOrigin(0).setInteractive();
 
-    const pw = PANEL_W, ph = PANEL_H;
+    const pw = Phaser.Math.Clamp(W - 8, PANEL_MIN_W, PANEL_MAX_W);
+    const ph = PANEL_H;
     this.root = this.add.container(0, 0);
     const s = Math.min((W - 8) / pw, (H - 8) / ph, 1);
     this.root.setScale(s);
@@ -126,7 +129,7 @@ export class PortScene extends Phaser.Scene {
 
       this.ui(this.add.text(x + w * 0.32, ry - 8, `Kauf ${pr.buy}`, textStyle(11, '#5ce07a')).setOrigin(0, 0.5));
       this.ui(this.add.text(x + w * 0.32, ry + 9, `Verk ${pr.sell}`, textStyle(11, '#e09090')).setOrigin(0, 0.5));
-      this.ui(this.add.text(x + w * 0.52, ry, `×${owned}`, textStyle(12, '#9fe8f0')).setOrigin(0, 0.5));
+      this.ui(this.add.text(x + w * 0.48, ry, `×${owned}`, textStyle(12, '#9fe8f0')).setOrigin(0, 0.5));
 
       const bw = 72;
       const btnX1 = x + w - bw * 1.6 - 10;
@@ -180,13 +183,16 @@ export class PortScene extends Phaser.Scene {
       const btnW = 128;
       const rightX = x + w - (btnW / 2 + 6);
 
-      this.ui(this.add.text(x, ry, `${upg.name}  •  Stufe ${lvl}/${upg.maxLevel}`, textStyle(13, '#ffd23f')).setOrigin(0, 0));
+      // level + price live on their own line below the description — keeps
+      // the title line short enough to never run under the button
+      this.ui(this.add.text(x, ry, upg.name, textStyle(13, '#ffd23f')).setOrigin(0, 0));
       this.ui(this.add.text(x, ry + 18, upg.desc, textStyle(10, '#9fb8c8', { wordWrap: { width: w - btnW - 24 } })).setOrigin(0, 0));
 
       if (maxed) {
         this.ui(this.add.text(rightX, ry + 16, '✓ MAX', textStyle(13, '#5ce07a')).setOrigin(0.5));
+        this.ui(this.add.text(x, ry + 50, `Stufe ${lvl}/${upg.maxLevel}`, textStyle(11, '#9fb8c8')).setOrigin(0, 0));
       } else {
-        this.ui(this.add.text(x, ry + 50, `${price} Gold`, textStyle(11, '#f6eed8')).setOrigin(0, 0));
+        this.ui(this.add.text(x, ry + 50, `Stufe ${lvl}/${upg.maxLevel}  •  ${price} Gold`, textStyle(11, '#f6eed8')).setOrigin(0, 0));
         this.ui(makeButton(this, rightX, ry + 22, btnW, 40, 'AUSBAUEN',
           p.gold >= price ? 'good' : 'disabled', () => {
             p.gold -= price;
