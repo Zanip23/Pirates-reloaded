@@ -25,9 +25,8 @@ export function textStyle(size, color, extra = {}) {
     color,
     stroke: '#0a1420',
     strokeThickness: Math.max(2, Math.round(size / 6)),
-    // render text at device resolution so it stays sharp when UI containers
-    // are scaled down to fit small screens
-    resolution: Math.min(3, window.devicePixelRatio || 1),
+    // NOTE: no `resolution` override here — with pixelArt (nearest-neighbor)
+    // rendering, hi-res text gets downsampled into broken, washed-out glyphs.
     ...extra,
   };
 }
