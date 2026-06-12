@@ -49,7 +49,18 @@ export class PortScene extends Phaser.Scene {
     this.root.setScale(s);
     this.root.setPosition(Math.round((W - pw * s) / 2), Math.round((H - ph * s) / 2));
     // everything below is laid out in design coordinates inside this.root
-    this.ui = obj => { this.root.add(obj); return obj; };
+    // When the panel is scaled below 1, nearest-neighbor sampling (pixelArt)
+    // drops pixel rows from glyphs and mangles the text — switch those text
+    // textures to linear filtering so downscaling stays smooth and readable.
+    const smooth = o => {
+      if (o.style && o.texture) o.texture.setFilter(Phaser.Textures.FilterMode.LINEAR);
+      if (o.list) o.list.forEach(smooth);
+    };
+    this.ui = obj => {
+      this.root.add(obj);
+      if (s < 0.999) smooth(obj);
+      return obj;
+    };
 
     this.ui(makePanel(this, 0, 0, pw, ph));
 
