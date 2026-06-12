@@ -61,8 +61,26 @@ export class GameScene extends Phaser.Scene {
     this.wasd = this.input.keyboard.addKeys({ up: 'W', down: 'S', left: 'A', right: 'D' });
     this.input.on('pointerdown', this.onMapTap, this);
 
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.scale.off('resize', this.resize, this);
+    });
+
     // Update HUD once
     this.refreshHUD();
+  }
+
+  // Phaser hit-tests container children against the child's own scrollFactor,
+  // not the container's — a fixed UI container therefore needs scrollFactor 0
+  // on every child, otherwise hit areas drift away once the camera scrolls.
+  applyFixedScrollFactor(container) {
+    container.setScrollFactor(0);
+    container.each((child) => {
+      if (child instanceof Phaser.GameObjects.Container) {
+        this.applyFixedScrollFactor(child);
+      } else if (child.setScrollFactor) {
+        child.setScrollFactor(0);
+      }
+    });
   }
 
   // ── World building ────────────────────────────────────────────────────────
@@ -121,6 +139,7 @@ export class GameScene extends Phaser.Scene {
          if (child === this.eventBg) {
              child.setPosition(ex, ey);
              child.setSize(ew, eh);
+             if (child.input) child.input.hitArea.setSize(ew, eh);
          } else if (child === this.eventTitle) {
              child.setPosition(ex + ew / 2, ey + 12);
          } else if (child === this.eventBody) {
@@ -287,9 +306,12 @@ export class GameScene extends Phaser.Scene {
 
   positionDockBtn() {
     const W = this.scale.width;
-    const H = this.scale.height;
-    this.dockBtn.setPosition(W - 70, 40);
-    this.dockBtnTxt.setPosition(W - 70, 40);
+    const bw = Math.max(130, this.dockBtnTxt.width + 24);
+    this.dockBtn.setSize(bw, 44);
+    if (this.dockBtn.input) this.dockBtn.input.hitArea.setSize(bw, 44);
+    const bx = W - bw / 2 - 10;
+    this.dockBtn.setPosition(bx, 40);
+    this.dockBtnTxt.setPosition(bx, 40);
   }
 
   // ── Mobile controls ───────────────────────────────────────────────────────
@@ -340,6 +362,7 @@ export class GameScene extends Phaser.Scene {
     this.portPanel = this.add.container(0, 0).setScrollFactor(0).setDepth(80).setVisible(false);
 
     const bg = this.add.rectangle(px, py, pw, ph, 0x0a0e18, 0.97).setOrigin(0, 0).setStrokeStyle(2, 0xc8a020);
+    bg.setInteractive(); // swallow taps so they don't reach controls underneath
     this.portPanel.add(bg);
 
     // Tab buttons
@@ -381,6 +404,8 @@ export class GameScene extends Phaser.Scene {
     this.portPanel.add(leaveBg);
     this.portPanel.add(leaveTxt);
 
+    this.applyFixedScrollFactor(this.portPanel);
+
     this._portPanelBounds = { px, py, pw, ph };
   }
 
@@ -418,6 +443,8 @@ export class GameScene extends Phaser.Scene {
     if (tab === 'WERFT') this.buildShipyardTab(px + 4, contentY, pw - 8, contentH);
     if (tab === 'TAVERNE')   this.buildTavernTab(px + 4, contentY, pw - 8, contentH);
     if (tab === 'STATUS')   this.buildStatusTab(px + 4, contentY, pw - 8, contentH);
+
+    this.applyFixedScrollFactor(this.portContent);
   }
 
   // ── Market tab ────────────────────────────────────────────────────────────
@@ -446,7 +473,7 @@ export class GameScene extends Phaser.Scene {
       const owned = p.cargo[good.id] || 0;
 
       // Price indicator
-      const indicator = pData.buy <= 0.75 ? '★ CHEAP' : pData.buy >= 1.6 ? '▲ PRICEY' : 'NORMAL';
+      const indicator = pData.buy <= 0.75 ? '★ GÜNSTIG' : pData.buy >= 1.6 ? '▲ TEUER' : 'NORMAL';
       const indColor  = pData.buy <= 0.75 ? '#60e060' : pData.buy >= 1.6 ? '#e06060' : '#a0a0a0';
 
       this.portContent.add(this.add.text(x + 2, ry, good.name, { fontSize: '12px', fill: '#d8c080', fontFamily: 'Courier New' }));
@@ -483,7 +510,7 @@ export class GameScene extends Phaser.Scene {
     const p = this.player;
     const usedCargo = Object.values(p.cargo).reduce((s, v) => s + v, 0);
     if (p.gold < price) { this.showToast('Nicht genug Gold!'); return; }
-    if (usedCargo >= p.cargoCapacity) { this.showToast('Cargo hold is full!'); return; }
+    if (usedCargo >= p.cargoCapacity) { this.showToast('Der Frachtraum ist voll!'); return; }
     p.gold -= price;
     p.cargo[good.id] = (p.cargo[good.id] || 0) + 1;
     saveGame(p);
@@ -493,7 +520,7 @@ export class GameScene extends Phaser.Scene {
 
   sellGood(good, price) {
     const p = this.player;
-    if (!p.cargo[good.id] || p.cargo[good.id] <= 0) { this.showToast('Nothing to sell!'); return; }
+    if (!p.cargo[good.id] || p.cargo[good.id] <= 0) { this.showToast('Nichts zu verkaufen!'); return; }
     p.gold += price;
     p.cargo[good.id] -= 1;
     if (p.cargo[good.id] === 0) delete p.cargo[good.id];
@@ -631,31 +658,31 @@ export class GameScene extends Phaser.Scene {
     const usedCargo = Object.values(p.cargo).reduce((s, v) => s + v, 0);
 
     const lines = [
-      `Ship:        ${p.name}`,
+      `Schiff:      ${p.name}`,
       `Gold:        ${p.gold}`,
-      `Hull:        ${p.hull} / ${p.maxHull}`,
-      `Cannons:     ${p.cannons}`,
-      `Speed:       ${p.speed}`,
-      `Cargo:       ${usedCargo} / ${p.cargoCapacity}`,
+      `Rumpf:       ${p.hull} / ${p.maxHull}`,
+      `Kanonen:     ${p.cannons}`,
+      `Tempo:       ${p.speed}`,
+      `Fracht:      ${usedCargo} / ${p.cargoCapacity}`,
       `Crew:        ${p.crew} / ${p.maxCrew}`,
-      `Morale:      ${p.morale}`,
-      `Reputation:  ${p.reputation}`,
-      `Day:         ${p.day}`,
-      `Enemies:     ${p.enemiesDefeated} defeated`,
+      `Moral:       ${p.morale}`,
+      `Ruf:         ${p.reputation}`,
+      `Tag:         ${p.day}`,
+      `Feinde:      ${p.enemiesDefeated} besiegt`,
       '',
-      '--- CARGO HOLD ---',
+      '--- FRACHTRAUM ---',
     ];
 
     GOODS.forEach(g => {
       const qty = p.cargo[g.id] || 0;
       if (qty > 0) lines.push(`  ${g.name}: ${qty}`);
     });
-    if (Object.values(p.cargo).reduce((s, v) => s + v, 0) === 0) lines.push('  (empty)');
+    if (Object.values(p.cargo).reduce((s, v) => s + v, 0) === 0) lines.push('  (leer)');
 
-    lines.push('', '--- UPGRADES ---');
+    lines.push('', '--- VERBESSERUNGEN ---');
     UPGRADES.forEach(u => {
       const lvl = p.upgradeLevel[u.id] || 0;
-      lines.push(`  ${u.name}: Lv ${lvl}/${u.maxLevel}`);
+      lines.push(`  ${u.name}: Stufe ${lvl}/${u.maxLevel}`);
     });
 
     lines.forEach((line, i) => {
@@ -677,6 +704,7 @@ export class GameScene extends Phaser.Scene {
     this.combatPanel = this.add.container(0, 0).setScrollFactor(0).setDepth(90).setVisible(false);
 
     const bg = this.add.rectangle(cx, cy, cw, ch, 0x100a08, 0.98).setOrigin(0, 0).setStrokeStyle(2, 0xaa3020);
+    bg.setInteractive();
     this.combatPanel.add(bg);
 
     this.combatTitle = this.add.text(cx + cw / 2, cy + 10, 'KAMPF!', {
@@ -718,6 +746,8 @@ export class GameScene extends Phaser.Scene {
       this.combatPanel.add(t);
     });
 
+    this.applyFixedScrollFactor(this.combatPanel);
+
     this._combatBounds = { cx, cy, cw, ch };
   }
 
@@ -754,10 +784,10 @@ export class GameScene extends Phaser.Scene {
     const p = this.player;
     const e = this.enemy;
     this.combatPlayerStats.setText(
-      `YOUR SHIP\nHull: ${p.hull}/${p.maxHull}\nCannons: ${p.cannons}\nCrew: ${p.crew}`
+      `DEIN SCHIFF\nRumpf: ${p.hull}/${p.maxHull}\nKanonen: ${p.cannons}\nCrew: ${p.crew}`
     );
     this.combatEnemyStats.setText(
-      `ENEMY\nHull: ${e.hull}/${e.maxHull}\nCannons: ${e.cannons}\nCrew: ${e.crew}`
+      `FEIND\nRumpf: ${e.hull}/${e.maxHull}\nKanonen: ${e.cannons}\nCrew: ${e.crew}`
     );
   }
 
@@ -769,13 +799,13 @@ export class GameScene extends Phaser.Scene {
     const moraleBonus = p.morale / 100;
     const dmg = Math.round((p.cannons * 8 + Phaser.Math.Between(2, 10)) * crewBonus * (0.8 + moraleBonus * 0.4));
     e.hull -= dmg;
-    let log = `You fire! Dealt ${dmg} damage.`;
+    let log = `Du feuerst! ${dmg} Schaden verursacht.`;
 
     if (e.hull <= 0) {
       e.hull = 0;
       this.combatResolving = true;
       this.updateCombatStats();
-      this.combatLog.setText(log + '\nENEMY DEFEATED!');
+      this.combatLog.setText(log + '\nFEIND BESIEGT!');
       this.time.delayedCall(1200, () => this.endCombat(true));
       return;
     }
@@ -783,7 +813,7 @@ export class GameScene extends Phaser.Scene {
     // Enemy retaliates
     const eDmg = Math.round((e.cannons * 7 + Phaser.Math.Between(1, 8)) * (0.6 + Math.random() * 0.6));
     p.hull -= eDmg;
-    log += `\nEnemy fires back! You take ${eDmg} damage.`;
+    log += `\nDer Feind feuert zurück! Du nimmst ${eDmg} Schaden.`;
 
     if (p.hull <= 0) {
       p.hull = 0;
@@ -884,6 +914,7 @@ export class GameScene extends Phaser.Scene {
 
     this.eventPanel = this.add.container(0, 0).setScrollFactor(0).setDepth(85).setVisible(false);
     const bg = this.add.rectangle(ex, ey, ew, eh, 0x0c1020, 0.96).setOrigin(0, 0).setStrokeStyle(2, 0x607090);
+    bg.setInteractive();
     this.eventBg = bg;
     this.eventPanel.add(bg);
 
@@ -899,6 +930,7 @@ export class GameScene extends Phaser.Scene {
     this.eventPanel.add(this.eventBtn1.txt);
     this.eventPanel.add(this.eventBtn2.bg);
     this.eventPanel.add(this.eventBtn2.txt);
+    this.applyFixedScrollFactor(this.eventPanel);
     this._evBounds = { ex, ey, ew, eh };
   }
 
@@ -946,18 +978,18 @@ export class GameScene extends Phaser.Scene {
       this.eventBtn2.txt.setText('FLUCHT VERSUCHEN');
       this.eventBtn1.bg.on('pointerdown', () => {
         this.eventPanel.setVisible(false);
-        this.startCombat({ name: 'Pirate Ship', hull: enemyHull, maxHull: enemyHull, cannons: enemyCannons, crew: 6 + strength, reward: 30 + strength * 20 });
+        this.startCombat({ name: 'Piratenschiff', hull: enemyHull, maxHull: enemyHull, cannons: enemyCannons, crew: 6 + strength, reward: 30 + strength * 20 });
       });
       this.eventBtn2.bg.on('pointerdown', () => {
         this.eventPanel.setVisible(false);
         const escaped = Math.random() < (p.speed / 250);
         if (escaped) {
-          this.showToast('You escaped!');
+          this.showToast('Entkommen!');
         } else {
           const dmg = Phaser.Math.Between(10, 30);
           p.hull -= dmg;
           p.morale = Math.max(0, p.morale - 5);
-          this.showToast(`Caught! Took ${dmg} damage!`);
+          this.showToast(`Erwischt! ${dmg} Schaden erlitten!`);
           if (p.hull <= 0) { this.triggerGameOver(); return; }
           saveGame(p); this.refreshHUD();
         }
@@ -965,7 +997,7 @@ export class GameScene extends Phaser.Scene {
     } else if (type === 'sturm') {
       const dmg = Phaser.Math.Between(8, 25);
       const cargoLoss = Math.random() < 0.3;
-      this.eventTitle.setText('⚡ STORM!');
+      this.eventTitle.setText('⚡ STURM!');
       this.eventBody.setText(`Dunkle Wolken! Ein heftiger Sturm beutelt dein Schiff!\nDu nimmst ${dmg} Rumpfschaden.${cargoLoss ? '\nEtwas Fracht wird über Bord gespült!' : ''}`);
       this.eventBtn1.txt.setText('WEITERSEGELN');
       this.eventBtn2.txt.setVisible(false);
@@ -987,14 +1019,14 @@ export class GameScene extends Phaser.Scene {
       const goldFind = Phaser.Math.Between(20, 80);
       this.eventTitle.setText('★ TREIBGUT GEFUNDEN!');
       this.eventBody.setText(`Dein Ausguck entdeckt Trümmer auf dem Wasser.\nDu birgst Bergut im Wert von ${goldFind} Gold!`);
-      this.eventBtn1.txt.setText('COLLECT');
+      this.eventBtn1.txt.setText('BERGEN');
       this.eventBtn2.txt.setVisible(false);
       this.eventBtn2.bg.setVisible(false);
       this.eventBtn1.bg.on('pointerdown', () => {
         p.gold += goldFind;
         saveGame(p); this.refreshHUD();
         this.eventPanel.setVisible(false);
-        this.showToast(`+${goldFind} gold!`);
+        this.showToast(`+${goldFind} Gold!`);
       });
     } else if (type === 'händler') {
       const goodIdx = Phaser.Math.Between(0, GOODS.length - 1);
@@ -1008,16 +1040,16 @@ export class GameScene extends Phaser.Scene {
       this.eventBtn1.bg.on('pointerdown', () => {
         const uc = Object.values(p.cargo).reduce((s, v) => s + v, 0);
         if (p.gold < discountPrice) { this.showToast('Nicht genug Gold!'); return; }
-        if (uc >= p.cargoCapacity) { this.showToast('Cargo full!'); return; }
+        if (uc >= p.cargoCapacity) { this.showToast('Frachtraum voll!'); return; }
         p.gold -= discountPrice;
         p.cargo[good.id] = (p.cargo[good.id] || 0) + 1;
         saveGame(p); this.refreshHUD();
         this.eventPanel.setVisible(false);
-        this.showToast(`Bought ${good.name}!`);
+        this.showToast(`${good.name} gekauft!`);
       });
       this.eventBtn2.bg.on('pointerdown', () => { this.eventPanel.setVisible(false); });
     } else if (type === 'marine') {
-      this.eventTitle.setText('⚓ MARINE PATROL!');
+      this.eventTitle.setText('⚓ MARINEPATROUILLE!');
       if (p.reputation < -5) {
         const dmg = Phaser.Math.Between(5, 20);
         const fine = Math.min(p.gold, Phaser.Math.Between(30, 100));
@@ -1036,11 +1068,11 @@ export class GameScene extends Phaser.Scene {
           if (p.hull <= 0) { this.triggerGameOver(); return; }
           saveGame(p); this.refreshHUD();
           this.eventPanel.setVisible(false);
-          this.showToast('Escaped the Navy!');
+          this.showToast('Der Marine entkommen!');
         });
       } else {
-        this.eventBody.setText('A Navy patrol vessel passes nearby.\nThey wave — your reputation is clean.\n\nThey move on without incident.');
-        this.eventBtn1.txt.setText('WAVE BACK');
+        this.eventBody.setText('Ein Patrouillenschiff der Marine passiert in der Nähe.\nSie winken — dein Ruf ist sauber.\n\nSie ziehen ohne Zwischenfall weiter.');
+        this.eventBtn1.txt.setText('ZURÜCKWINKEN');
         this.eventBtn2.txt.setVisible(false);
         this.eventBtn2.bg.setVisible(false);
         this.eventBtn1.bg.on('pointerdown', () => { this.eventPanel.setVisible(false); });
@@ -1057,6 +1089,7 @@ export class GameScene extends Phaser.Scene {
 
     this.gameOverPanel = this.add.container(0, 0).setScrollFactor(0).setDepth(100).setVisible(false);
     const bg = this.add.rectangle(0, 0, W, H, 0x000000, 0.85).setOrigin(0, 0);
+    bg.setInteractive();
     this.gameOverPanel.add(bg);
 
     this.gameOverTitle = this.add.text(W / 2, H * 0.2, 'DEIN SCHIFF IST GESUNKEN', { fontSize: '22px', fill: '#ff4020', fontFamily: 'Courier New', fontStyle: 'bold', stroke: '#000', strokeThickness: 4 }).setOrigin(0.5);
@@ -1074,6 +1107,8 @@ export class GameScene extends Phaser.Scene {
     });
     this.gameOverPanel.add(newBg);
     this.gameOverPanel.add(newTxt);
+
+    this.applyFixedScrollFactor(this.gameOverPanel);
   }
 
   triggerGameOver() {
@@ -1085,7 +1120,7 @@ export class GameScene extends Phaser.Scene {
     deleteSave();
     const p = this.player;
     this.gameOverStats.setText(
-      `Gold earned: ${p.gold}\nDays survived: ${p.day}\nEnemies defeated: ${p.enemiesDefeated || 0}\nReputation: ${p.reputation}`
+      `Gold verdient: ${p.gold}\nTage überlebt: ${p.day}\nFeinde besiegt: ${p.enemiesDefeated || 0}\nRuf: ${p.reputation}`
     );
     this.gameOverPanel.setVisible(true);
   }
@@ -1194,14 +1229,14 @@ export class GameScene extends Phaser.Scene {
     if (nearestDist < DOCK_DIST) {
       this.dockBtn.setVisible(true);
       this.dockBtnTxt.setVisible(true);
-      this.positionDockBtn();
       this.dockBtnTxt.setText(`ANLEGEN: ${nearest.name}`);
+      this.positionDockBtn();
       this.hudNear.setText(`Nahe: ${nearest.name}`);
     } else {
       this.dockBtn.setVisible(false);
       this.dockBtnTxt.setVisible(false);
       if (nearest) {
-        this.hudNear.setText(`Nearest: ${nearest.name}`);
+        this.hudNear.setText(`Nächster: ${nearest.name}`);
       }
     }
   }
@@ -1226,8 +1261,11 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  onMapTap(pointer) {
-    if (this.portUIOpen || this.inCombat || this.gameOver || this.isPointerOnFixedUI(pointer)) return;
+  onMapTap(pointer, currentlyOver) {
+    if (this.portUIOpen || this.inCombat || this.gameOver) return;
+    if (this.eventPanel && this.eventPanel.visible) return;
+    // Taps that land on interactive UI (dock button, arrows, panels) are not map taps
+    if (currentlyOver && currentlyOver.length > 0) return;
     // Convert screen coords to world coords
     const wx = pointer.worldX;
     const wy = pointer.worldY;
