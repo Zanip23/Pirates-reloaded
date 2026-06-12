@@ -43,7 +43,13 @@ export function makeButton(scene, x, y, w, h, label, variant, onClick) {
   const shadow = scene.add.rectangle(3, 4, w, h, 0x0a1420, 0.8).setOrigin(0.5);
   const face = scene.add.rectangle(0, 0, w, h, v[0]).setOrigin(0.5);
   face.setStrokeStyle(2, v[1]);
-  const txt = scene.add.text(0, 0, label, textStyle(Math.min(15, h * 0.4), '#ffffff')).setOrigin(0.5);
+
+  // calculate text size to fit button bounds, using rough monospaced char width ratio
+  const maxFontSizeFromHeight = Math.min(15, h * 0.4);
+  const maxFontSizeFromWidth = label.length > 0 ? (w - 12) / (label.length * 0.6) : maxFontSizeFromHeight;
+  const fontSize = Math.max(8, Math.floor(Math.min(maxFontSizeFromHeight, maxFontSizeFromWidth)));
+
+  const txt = scene.add.text(0, 0, label, textStyle(fontSize, '#ffffff')).setOrigin(0.5);
   c.add([shadow, face, txt]);
   c.setSize(w, h);
 

@@ -71,8 +71,13 @@ export class PortScene extends Phaser.Scene {
     if (this.activeTab === 'SCHIFF') this.buildStatus(px + 14, cy, pw - 28, ch);
 
     // gold footer + leave
-    this.goldTxt = this.add.text(px + 16, py + ph - 36, '', textStyle(14, '#ffd23f')).setOrigin(0, 0.5);
-    makeButton(this, px + pw - 92, py + ph - 36, 160, 46, '⛵ ABLEGEN', 'bad', () => this.leave());
+    if (pw < 400) {
+      this.goldTxt = this.add.text(px + pw / 2, py + ph - 64, '', textStyle(12, '#ffd23f')).setOrigin(0.5, 0.5);
+      makeButton(this, px + pw / 2, py + ph - 28, 160, 46, '⛵ ABLEGEN', 'bad', () => this.leave());
+    } else {
+      this.goldTxt = this.add.text(px + 16, py + ph - 36, '', textStyle(14, '#ffd23f')).setOrigin(0, 0.5);
+      makeButton(this, px + pw - 92, py + ph - 36, 160, 46, '⛵ ABLEGEN', 'bad', () => this.leave());
+    }
     this.refreshGold();
   }
 
@@ -122,10 +127,14 @@ export class PortScene extends Phaser.Scene {
       this.add.text(x + w * 0.32, ry + 9, `Verk ${pr.sell}`, textStyle(11, '#e09090')).setOrigin(0, 0.5);
       this.add.text(x + w * 0.52, ry, `×${owned}`, textStyle(12, '#9fe8f0')).setOrigin(0, 0.5);
 
-      const bw = Math.min(72, w * 0.155);
-      makeButton(this, x + w - bw * 1.6 - 10, ry, bw, rowH - 12, 'KAUF',
+      const narrow = w < 320;
+      const bw = Math.min(72, w * (narrow ? 0.22 : 0.155));
+      const btnX1 = x + w - bw * 1.6 - 10;
+      const btnX2 = x + w - bw * 0.5;
+
+      makeButton(this, btnX1, ry, bw, rowH - 12, 'KAUF',
         this.canBuy(pr.buy) ? 'good' : 'disabled', () => this.buy(good, pr.buy, 1));
-      makeButton(this, x + w - bw * 0.5, ry, bw, rowH - 12, 'VERK',
+      makeButton(this, btnX2, ry, bw, rowH - 12, 'VERK',
         owned > 0 ? 'bad' : 'disabled', () => this.sell(good, pr.sell, 1));
     });
   }
@@ -168,15 +177,18 @@ export class PortScene extends Phaser.Scene {
       const lvl = p.upgradeLevel[upg.id] || 0;
       const maxed = lvl >= upg.maxLevel;
       const price = upg.price(lvl);
+      const narrow = w < 340;
+      const btnW = narrow ? 90 : 128;
+      const rightX = x + w - (btnW / 2 + 6);
 
       this.add.text(x, ry, `${upg.name}  •  Stufe ${lvl}/${upg.maxLevel}`, textStyle(13, '#ffd23f')).setOrigin(0, 0);
-      this.add.text(x, ry + 18, upg.desc, textStyle(10, '#9fb8c8', { wordWrap: { width: w - 150 } })).setOrigin(0, 0);
+      this.add.text(x, ry + 18, upg.desc, textStyle(10, '#9fb8c8', { wordWrap: { width: w - (narrow ? 100 : 150) } })).setOrigin(0, 0);
 
       if (maxed) {
-        this.add.text(x + w - 70, ry + 16, '✓ MAX', textStyle(13, '#5ce07a')).setOrigin(0.5);
+        this.add.text(rightX, ry + 16, '✓ MAX', textStyle(13, '#5ce07a')).setOrigin(0.5);
       } else {
-        this.add.text(x, ry + 36, `${price} Gold`, textStyle(11, '#f6eed8')).setOrigin(0, 0);
-        makeButton(this, x + w - 70, ry + 22, 128, 40, 'AUSBAUEN',
+        this.add.text(x, ry + 42, `${price} Gold`, textStyle(11, '#f6eed8')).setOrigin(0, 0);
+        makeButton(this, rightX, ry + 22, btnW, 40, 'AUSBAUEN',
           p.gold >= price ? 'good' : 'disabled', () => {
             p.gold -= price;
             p.upgradeLevel[upg.id] = lvl + 1;
@@ -191,10 +203,12 @@ export class PortScene extends Phaser.Scene {
     // repairs
     const ry = y + UPGRADES.length * rowH + 12;
     const missing = st.maxHull - Math.ceil(p.hull);
+    const narrow = w < 340;
+    const btnW = narrow ? 100 : 128;
     if (missing > 0) {
       const cost = missing * 2;
-      this.add.text(x, ry, `Rumpf reparieren (+${missing})  •  ${cost} Gold`, textStyle(12, '#9fe8f0')).setOrigin(0, 0.5);
-      makeButton(this, x + w - 70, ry, 128, 40, 'REPARIEREN',
+      this.add.text(x, ry, `Rumpf reparieren (+${missing})\n${cost} Gold`, textStyle(12, '#9fe8f0')).setOrigin(0, 0.5);
+      makeButton(this, x + w - (btnW / 2 + 6), ry, btnW, 40, 'REPARIEREN',
         p.gold >= cost ? 'normal' : 'disabled', () => {
           p.gold -= cost;
           p.hull = st.maxHull;
@@ -210,21 +224,29 @@ export class PortScene extends Phaser.Scene {
 
   buildTavern(x, y, w, h) {
     const p = this.player;
+    const narrow = w < 320;
+    const btnW = narrow ? 110 : 150;
+    const btnX = x + w - (btnW / 2 + 5);
 
-    this.add.text(x, y + 6, `Crew: ${p.crew}/${p.maxCrew}  —  volle Decks segeln schneller`, textStyle(12, '#f6eed8')).setOrigin(0, 0);
+    this.add.text(x, y + 6, `Crew: ${p.crew}/${p.maxCrew}  —  volle Decks segeln schneller`,
+      textStyle(12, '#f6eed8', { wordWrap: { width: w - 10 } })).setOrigin(0, 0);
     const crewCost = 60;
+    const crewBtnY = narrow ? y + 36 : y + 16;
     if (p.crew < p.maxCrew) {
-      makeButton(this, x + w - 80, y + 16, 150, 42, `ANHEUERN ${crewCost}g`,
+      makeButton(this, btnX, crewBtnY, btnW, 42, `ANHEUERN ${crewCost}g`,
         p.gold >= crewCost ? 'good' : 'disabled', () => {
           p.gold -= crewCost; p.crew++;
           saveGame(p); this.rebuild();
         });
     }
 
-    this.add.text(x, y + 56, `Moral: ${p.morale}/100  —  motivierte Kanoniere treffen härter`, textStyle(12, '#f6eed8')).setOrigin(0, 0);
+    const mY = narrow ? y + 86 : y + 56;
+    this.add.text(x, mY, `Moral: ${p.morale}/100  —  motivierte Kanoniere treffen härter`,
+      textStyle(12, '#f6eed8', { wordWrap: { width: w - 10 } })).setOrigin(0, 0);
     const drinkCost = 40;
+    const drinkBtnY = narrow ? mY + 30 : mY + 10;
     if (p.morale < 100) {
-      makeButton(this, x + w - 80, y + 66, 150, 42, `RUNDE RUM ${drinkCost}g`,
+      makeButton(this, btnX, drinkBtnY, btnW, 42, `RUNDE RUM ${drinkCost}g`,
         p.gold >= drinkCost ? 'gold' : 'disabled', () => {
           p.gold -= drinkCost;
           p.morale = Math.min(100, p.morale + 15);
@@ -233,11 +255,12 @@ export class PortScene extends Phaser.Scene {
     }
 
     // rumors — deterministic per port and day so they don't reshuffle on rebuild
-    this.add.text(x, y + 116, 'GERÜCHTE AM TRESEN', textStyle(12, '#ffd23f')).setOrigin(0, 0);
+    const rY = narrow ? mY + 80 : mY + 60;
+    this.add.text(x, rY, 'GERÜCHTE AM TRESEN', textStyle(12, '#ffd23f')).setOrigin(0, 0);
     const r1 = RUMORS[(this.portIndex * 3 + p.day) % RUMORS.length];
     const r2 = RUMORS[(this.portIndex * 5 + p.day + 4) % RUMORS.length];
     [r1, r2].filter((r, i, a) => a.indexOf(r) === i).forEach((r, i) => {
-      this.add.text(x, y + 140 + i * 44, `„${r}“`,
+      this.add.text(x, rY + 24 + i * 44, `„${r}“`,
         textStyle(11, '#c8b890', { fontStyle: 'italic', wordWrap: { width: w - 10 } })).setOrigin(0, 0);
     });
   }
