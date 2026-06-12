@@ -45,7 +45,7 @@ export class MenuScene extends Phaser.Scene {
 
     this.buttons = [];
 
-    const newGameBtn = this.makeButton('NEW GAME', 0x1a6e2e, () => {
+    const newGameBtn = this.makeButton('NEUES SPIEL', 0x1a6e2e, () => {
       deleteSave();
       this.registry.set('player', JSON.parse(JSON.stringify(INITIAL_PLAYER)));
       this.scene.start('GameScene');
@@ -53,19 +53,19 @@ export class MenuScene extends Phaser.Scene {
     this.buttons.push(newGameBtn);
 
     if (hasSave()) {
-      const continueBtn = this.makeButton('CONTINUE', 0x1a3a6e, () => {
+      const continueBtn = this.makeButton('WEITERSPIELEN', 0x1a3a6e, () => {
         this.scene.start('GameScene', { load: true });
       });
       this.buttons.push(continueBtn);
 
-      const deleteBtn = this.makeButton('DELETE SAVE', 0x6e1a1a, () => {
+      const deleteBtn = this.makeButton('SPIELSTAND LÖSCHEN', 0x6e1a1a, () => {
         deleteSave();
         this.scene.restart();
       });
       this.buttons.push(deleteBtn);
     }
 
-    this.infoText = this.add.text(0, 0, 'Use WASD / Arrow Keys or tap to move  •  Tap port to dock', {
+    this.infoText = this.add.text(0, 0, 'Nutze WASD / Pfeiltasten oder Tippen zum Bewegen  •  Hafen antippen zum Anlegen', {
       fontSize: '11px',
       fill: '#4a7aaa',
       fontFamily: 'Courier New',
