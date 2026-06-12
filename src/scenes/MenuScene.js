@@ -107,6 +107,8 @@ export class MenuScene extends Phaser.Scene {
     this.buttons.forEach((btn, i) => {
       btn.bg.setPosition(W / 2, btnY + gap * i);
       btn.bg.setSize(btnW, btnH);
+      // setSize does not update the input hit area — resize it manually
+      if (btn.bg.input) btn.bg.input.hitArea.setSize(btnW, btnH);
       btn.txt.setPosition(W / 2, btnY + gap * i);
     });
 
