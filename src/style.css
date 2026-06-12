@@ -12,16 +12,23 @@ html, body {
   font-family: 'Courier New', Courier, monospace;
 }
 
+/* Pin the game to the dynamic viewport (dvh tracks the mobile URL bar).
+   No flex centering: a centered canvas that is bigger than the page gets
+   clipped on ALL edges — anchored top-left it always matches the screen. */
 #game-container {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  justify-content: center;
-  align-items: center;
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  width: 100dvw;
+  height: 100dvh;
+  overflow: hidden;
+  touch-action: none;
 }
 
 #game-container canvas {
   display: block;
   image-rendering: pixelated;
   image-rendering: crisp-edges;
+  touch-action: none;
 }
