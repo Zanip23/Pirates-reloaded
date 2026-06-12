@@ -1,10 +1,10 @@
 export const GOODS = [
   { id: 'rum',     name: 'Rum',      basePrice: 20,  weight: 1 },
-  { id: 'spices',  name: 'Spices',   basePrice: 50,  weight: 1 },
-  { id: 'wood',    name: 'Wood',     basePrice: 15,  weight: 1 },
-  { id: 'iron',    name: 'Iron',     basePrice: 35,  weight: 1 },
-  { id: 'cloth',   name: 'Cloth',    basePrice: 25,  weight: 1 },
-  { id: 'tobacco', name: 'Tobacco',  basePrice: 30,  weight: 1 },
+  { id: 'spices',  name: 'Gewürze',   basePrice: 50,  weight: 1 },
+  { id: 'wood',    name: 'Holz',     basePrice: 15,  weight: 1 },
+  { id: 'iron',    name: 'Eisen',     basePrice: 35,  weight: 1 },
+  { id: 'cloth',   name: 'Stoffe',    basePrice: 25,  weight: 1 },
+  { id: 'tobacco', name: 'Tabak',  basePrice: 30,  weight: 1 },
 ];
 
 // multiplier tables: buy = base * buyMul, sell = base * sellMul
@@ -14,7 +14,7 @@ export const PORTS = [
     name: 'Port Haven',
     x: 320,
     y: 280,
-    desc: 'A busy trading hub known for its fine rum distilleries.',
+    desc: 'Ein belebter Handelsknotenpunkt, bekannt für seine feinen Rum-Brennereien.',
     prices: {
       rum:     { buy: 0.7, sell: 0.6 },
       spices:  { buy: 1.4, sell: 1.2 },
@@ -29,7 +29,7 @@ export const PORTS = [
     name: 'Redreef',
     x: 680,
     y: 180,
-    desc: 'A timber port surrounded by ancient red reefs.',
+    desc: 'Ein Holzhafen, umgeben von alten roten Riffen.',
     prices: {
       rum:     { buy: 1.3, sell: 1.1 },
       spices:  { buy: 1.5, sell: 1.2 },
@@ -44,7 +44,7 @@ export const PORTS = [
     name: 'San Cordoba',
     x: 520,
     y: 480,
-    desc: 'A wealthy colonial port famed for its fine cloth.',
+    desc: 'Eine reiche Kolonialstadt, berühmt für ihre feinen Stoffe.',
     prices: {
       rum:     { buy: 1.2, sell: 1.0 },
       spices:  { buy: 1.3, sell: 1.1 },
@@ -59,7 +59,7 @@ export const PORTS = [
     name: 'Blackwater Cay',
     x: 860,
     y: 420,
-    desc: 'A smuggler\'s den where tobacco flows freely.',
+    desc: 'Ein Schmugglernest, in dem der Tabak in Strömen fließt.',
     prices: {
       rum:     { buy: 1.1, sell: 0.9 },
       spices:  { buy: 1.9, sell: 1.6 },
@@ -74,7 +74,7 @@ export const PORTS = [
     name: 'Kingsport',
     x: 180,
     y: 520,
-    desc: 'A naval stronghold with a thriving iron foundry.',
+    desc: 'Eine Marinestützpunkt mit einer blühenden Eisengießerei.',
     prices: {
       rum:     { buy: 1.8, sell: 1.5 },
       spices:  { buy: 1.2, sell: 1.0 },
@@ -89,7 +89,7 @@ export const PORTS = [
     name: 'Isla Verde',
     x: 720,
     y: 600,
-    desc: 'A tropical island overflowing with exotic spices.',
+    desc: 'Eine tropische Insel, die vor exotischen Gewürzen überquillt.',
     prices: {
       rum:     { buy: 1.4, sell: 1.2 },
       spices:  { buy: 0.6, sell: 0.5 },
@@ -104,32 +104,32 @@ export const PORTS = [
 export const UPGRADES = [
   {
     id: 'hull',
-    name: 'Hull Reinforcement',
-    desc: 'Increases max hull and repairs some damage.',
+    name: 'Rumpfverstärkung',
+    desc: 'Erhöht den maximalen Rumpf und repariert etwas Schaden.',
     maxLevel: 4,
     effect: (lvl) => ({ maxHull: 20 * lvl, hullRepair: 10 * lvl }),
     price: (lvl) => 200 + lvl * 300,
   },
   {
     id: 'cannons',
-    name: 'Heavy Cannons',
-    desc: 'More firepower in battle.',
+    name: 'Schwere Kanonen',
+    desc: 'Mehr Feuerkraft im Kampf.',
     maxLevel: 4,
     effect: (lvl) => ({ cannons: lvl * 2 }),
     price: (lvl) => 250 + lvl * 350,
   },
   {
     id: 'sails',
-    name: 'Swift Sails',
-    desc: 'Increases speed and escape chance.',
+    name: 'Schnelle Segel',
+    desc: 'Erhöht die Geschwindigkeit und Fluchtchance.',
     maxLevel: 4,
     effect: (lvl) => ({ speed: lvl * 30 }),
     price: (lvl) => 200 + lvl * 250,
   },
   {
     id: 'cargo',
-    name: 'Expanded Hold',
-    desc: 'Increases cargo capacity.',
+    name: 'Erweiterter Frachtraum',
+    desc: 'Erhöht die Frachtkapazität.',
     maxLevel: 4,
     effect: (lvl) => ({ cargoCapacity: lvl * 10 }),
     price: (lvl) => 180 + lvl * 200,
@@ -137,20 +137,20 @@ export const UPGRADES = [
 ];
 
 export const RUMORS = [
-  'Rum is often cheap in Port Haven.',
-  'Iron fetches good prices in Kingsport... wait, no — Port Haven pays top coin for it!',
-  'Spices from Isla Verde sell well in Blackwater Cay.',
-  'The route past Blackwater Cay attracts pirates.',
-  'Cloth woven in San Cordoba is prized in Redreef.',
-  'Tobacco smuggled from Blackwater Cay sells for a fortune in Isla Verde.',
-  'Wood from Redreef is scarce in San Cordoba.',
-  'Marines patrol the waters near Kingsport.',
-  'A merchant was spotted near Isla Verde carrying valuable spices.',
-  'Storms brew frequently north of Redreef.',
+  'Rum ist in Port Haven oft billig.',
+  'Eisen erzielt in Kingsport gute Preise... warte, nein — Port Haven zahlt am besten dafür!',
+  'Gewürze von Isla Verde verkaufen sich gut in Blackwater Cay.',
+  'Die Route vorbei an Blackwater Cay zieht Piraten an.',
+  'In San Cordoba gewebte Stoffe sind in Redreef hochgeschätzt.',
+  'Aus Blackwater Cay geschmuggelter Tabak wird in Isla Verde für ein Vermögen verkauft.',
+  'Holz aus Redreef ist in San Cordoba Mangelware.',
+  'Die Marine patrouilliert in den Gewässern nahe Kingsport.',
+  'Ein Händler mit wertvollen Gewürzen wurde nahe Isla Verde gesichtet.',
+  'Nördlich von Redreef brauen sich häufig Stürme zusammen.',
 ];
 
 export const INITIAL_PLAYER = {
-  name: 'Sea Hawk',
+  name: 'Seefalke',
   gold: 500,
   hull: 100,
   maxHull: 100,
