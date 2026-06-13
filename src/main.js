@@ -3,6 +3,7 @@ import { BootScene } from './scenes/BootScene.js';
 import { MenuScene } from './scenes/MenuScene.js';
 import { GameScene } from './scenes/GameScene.js';
 import { PortScene } from './scenes/PortScene.js';
+import { initDevPanel } from './devpanel.js';
 
 const config = {
   type: Phaser.AUTO,
@@ -29,6 +30,9 @@ const config = {
 
 const game = new Phaser.Game(config);
 window.game = game; // debugging & test access
+
+// Entwickler-Tuning-Overlay (⚙ Dev unten rechts oder Taste F9).
+initDevPanel();
 
 // Mobile browsers resize the visual viewport (URL bar, keyboard, pinch)
 // without always firing a window resize — re-sync the canvas in all cases.

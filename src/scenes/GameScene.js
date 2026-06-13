@@ -5,11 +5,8 @@ import {
 import { saveGame, loadGame } from '../save.js';
 import { SCALE } from '../textures.js';
 import { makeButton, showToast, textStyle, COLORS } from '../ui.js';
+import { TUNING } from '../config.js';
 
-const DOCK_DIST = 130;
-const TURN_RATE = 3.2;
-const DAY_MS = 40000;
-const BALL_SPEED = 430;
 const JOY_RADIUS = 70;
 
 export class GameScene extends Phaser.Scene {
@@ -164,7 +161,7 @@ export class GameScene extends Phaser.Scene {
       const img = this.toWorld(this.add.image(port.x, port.y, texKey).setScale(SCALE).setDepth(3));
       img.setInteractive({ useHandCursor: true });
       img.on('pointerdown', () => {
-        if (this.distTo(port.x, port.y) < DOCK_DIST) this.openPort(port);
+        if (this.distTo(port.x, port.y) < TUNING.world.dockDist) this.openPort(port);
       });
       const nameColor = port.ring === 3 ? '#ff9070' : port.ring === 2 ? '#ffb888' : '#fff3c8';
       this.toWorld(this.add.text(port.x, port.y + 86, port.name,
@@ -606,11 +603,12 @@ export class GameScene extends Phaser.Scene {
     }
 
     const want = Math.atan2(dy, dx);
-    this.heading = Phaser.Math.Angle.RotateTo(this.heading, want, TURN_RATE * dt);
+    this.heading = Phaser.Math.Angle.RotateTo(this.heading, want, TUNING.combat.playerTurnRate * dt);
 
     const st = shipStats(this.player);
-    const crewFactor = 0.7 + 0.3 * (this.player.crew / this.player.maxCrew);
-    const speed = st.speed * 1.45 * crewFactor;
+    const floor = TUNING.combat.crewSpeedFloor;
+    const crewFactor = floor + (1 - floor) * (this.player.crew / this.player.maxCrew);
+    const speed = st.speed * TUNING.combat.playerSpeedMult * crewFactor;
     this.ship.x = Phaser.Math.Clamp(this.ship.x + Math.cos(this.heading) * speed * dt, 24, MAP_W - 24);
     this.ship.y = Phaser.Math.Clamp(this.ship.y + Math.sin(this.heading) * speed * dt, 24, MAP_H - 24);
     this.pushOffIslands(this.ship);
@@ -676,12 +674,13 @@ export class GameScene extends Phaser.Scene {
     // (e.g. circling) target can actually be hit. leadFactor < 1 makes the
     // shooter under-lead, leaving counterplay for players who vary speed and
     // heading. Two iterations converge well.
+    const ballSpeed = TUNING.combat.ballSpeed;
     if (opts.lead) {
-      let t = Math.hypot(aimX - fromSpr.x, aimY - fromSpr.y) / BALL_SPEED;
+      let t = Math.hypot(aimX - fromSpr.x, aimY - fromSpr.y) / ballSpeed;
       for (let i = 0; i < 2; i++) {
         aimX = targetSpr.x + opts.lead.x * t * leadFactor;
         aimY = targetSpr.y + opts.lead.y * t * leadFactor;
-        t = Math.hypot(aimX - fromSpr.x, aimY - fromSpr.y) / BALL_SPEED;
+        t = Math.hypot(aimX - fromSpr.x, aimY - fromSpr.y) / ballSpeed;
       }
     }
     const dx = aimX - fromSpr.x;
@@ -690,9 +689,9 @@ export class GameScene extends Phaser.Scene {
     const spr = this.toWorld(this.add.image(fromSpr.x, fromSpr.y, 'ball').setScale(SCALE).setDepth(12));
     this.balls.push({
       spr, friendly, dmg,
-      vx: Math.cos(a) * BALL_SPEED,
-      vy: Math.sin(a) * BALL_SPEED,
-      life: Math.min(1.0, Math.hypot(dx, dy) / BALL_SPEED + 0.12),
+      vx: Math.cos(a) * ballSpeed,
+      vy: Math.sin(a) * ballSpeed,
+      life: Math.min(1.0, Math.hypot(dx, dy) / ballSpeed + 0.12),
     });
   }
 
@@ -707,7 +706,7 @@ export class GameScene extends Phaser.Scene {
       if (b.friendly) {
         for (const pi of this.pirates) {
           if (pi.hull <= 0) continue;
-          if (Phaser.Math.Distance.Between(b.spr.x, b.spr.y, pi.spr.x, pi.spr.y) < 26) {
+          if (Phaser.Math.Distance.Between(b.spr.x, b.spr.y, pi.spr.x, pi.spr.y) < TUNING.combat.hitRadius) {
             pi.hull -= b.dmg;
             pi.state = 'chase';
             this.effect('boomAnim', 'boom', b.spr.x, b.spr.y);
@@ -716,7 +715,7 @@ export class GameScene extends Phaser.Scene {
             break;
           }
         }
-      } else if (Phaser.Math.Distance.Between(b.spr.x, b.spr.y, this.ship.x, this.ship.y) < 26) {
+      } else if (Phaser.Math.Distance.Between(b.spr.x, b.spr.y, this.ship.x, this.ship.y) < TUNING.combat.hitRadius) {
         this.damagePlayer(b.dmg);
         this.effect('boomAnim', 'boom', b.spr.x, b.spr.y);
         hit = true;
@@ -835,7 +834,7 @@ export class GameScene extends Phaser.Scene {
       if (pi.state !== 'chase' && d < pi.tier.aggro && playerRing >= 1) {
         pi.state = 'chase';
       }
-      if (pi.state === 'chase' && d > pi.tier.aggro * 2.2) {
+      if (pi.state === 'chase' && d > pi.tier.aggro * TUNING.combat.aggroLoseMult) {
         pi.state = 'roam';
         pi.roamTarget = null;
       }
@@ -854,11 +853,11 @@ export class GameScene extends Phaser.Scene {
         const mvx = Math.cos(angToPlayer) * radial - Math.sin(angToPlayer) * tang * 0.95;
         const mvy = Math.sin(angToPlayer) * radial + Math.cos(angToPlayer) * tang * 0.95;
         want = Math.atan2(mvy, mvx);
-        speed = pi.tier.speed * 1.25;
-        turnRate = 3.0;
+        speed = pi.tier.speed * TUNING.combat.pirateChaseSpeedMult;
+        turnRate = TUNING.combat.pirateChaseTurnRate;
         // Occasionally flip orbit direction so the player can't settle into a
         // safe rhythm.
-        if (Math.random() < 0.004) pi.orbitDir *= -1;
+        if (Math.random() < TUNING.combat.pirateOrbitFlipChance) pi.orbitDir *= -1;
       } else {
         if (!pi.roamTarget || Phaser.Math.Distance.Between(pi.spr.x, pi.spr.y, pi.roamTarget.x, pi.roamTarget.y) < 24) {
           pi.roamTarget = {
@@ -867,8 +866,8 @@ export class GameScene extends Phaser.Scene {
           };
         }
         want = Math.atan2(pi.roamTarget.y - pi.spr.y, pi.roamTarget.x - pi.spr.x);
-        speed = pi.tier.speed * 0.55;
-        turnRate = 2.4;
+        speed = pi.tier.speed * TUNING.combat.pirateRoamSpeedMult;
+        turnRate = TUNING.combat.pirateRoamTurnRate;
       }
 
       pi.heading = Phaser.Math.Angle.RotateTo(pi.heading, want, turnRate * dt);
@@ -979,7 +978,7 @@ export class GameScene extends Phaser.Scene {
   checkDockProximity() {
     let near = null;
     for (const p of PORTS) {
-      if (this.distTo(p.x, p.y) < DOCK_DIST) { near = p; break; }
+      if (this.distTo(p.x, p.y) < TUNING.world.dockDist) { near = p; break; }
     }
     if (near !== this.nearPort) {
       this.nearPort = near;
@@ -997,7 +996,7 @@ export class GameScene extends Phaser.Scene {
 
   advanceDay(delta) {
     this.dayTimer += delta;
-    if (this.dayTimer < DAY_MS) return;
+    if (this.dayTimer < TUNING.world.dayMs) return;
     this.dayTimer = 0;
     this.player.day++;
     this.player.morale = Math.max(10, this.player.morale - 1);
