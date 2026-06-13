@@ -1,14 +1,14 @@
 import {
-  MAP_W, MAP_H, ZONES, zoneAt, PORTS, PIRATE_TIERS,
-  INITIAL_PLAYER, shipStats, clone,
+  MAP_W, MAP_H, MAP_CX, MAP_CY, RING_RADII, RINGS, ringAt,
+  PORTS, PIRATE_TIERS, INITIAL_PLAYER, shipStats, portGarrisonRadius, clone,
 } from '../data.js';
 import { saveGame, loadGame } from '../save.js';
 import { SCALE } from '../textures.js';
 import { makeButton, showToast, textStyle, COLORS } from '../ui.js';
 
-const DOCK_DIST = 130;          // world px to allow docking
-const PORT_SAFE_RADIUS = 360;   // pirates never attack this close to a port
-const TURN_RATE = 3.2;          // rad/s ship turning
+const DOCK_DIST = 130;
+const PORT_SAFE_RADIUS = 360;
+const TURN_RATE = 3.2;
 const DAY_MS = 40000;
 const BALL_SPEED = 430;
 
@@ -22,7 +22,6 @@ export class GameScene extends Phaser.Scene {
   }
 
   create() {
-    // ── Player state ──────────────────────────────────────────────
     if (this.doLoad) {
       this.player = loadGame() || clone(INITIAL_PLAYER);
     } else {
@@ -39,10 +38,8 @@ export class GameScene extends Phaser.Scene {
     this.stormTickTimer = 0;
     this.wrecked = false;
     this.balls = [];
+    this.portBatteryCooldowns = {};
 
-    // Two render layers: camera zoom scales EVERYTHING it renders — even
-    // scrollFactor(0) objects — so the HUD gets its own camera. The main
-    // camera ignores the UI layer, the UI camera ignores the world layer.
     this.worldLayer = this.add.layer();
     this.uiLayer = this.add.layer().setDepth(1000);
     this.toWorld = obj => { this.worldLayer.add(obj); return obj; };
@@ -55,7 +52,6 @@ export class GameScene extends Phaser.Scene {
     this.buildCrates();
     this.buildHUD();
 
-    // ── Camera ────────────────────────────────────────────────────
     const cam = this.cameras.main;
     cam.setBounds(0, 0, MAP_W, MAP_H);
     cam.startFollow(this.ship, true, 0.08, 0.08);
@@ -66,12 +62,10 @@ export class GameScene extends Phaser.Scene {
     this.uiCam.ignore(this.worldLayer);
     cam.ignore(this.uiLayer);
 
-    // ── Input: one control everywhere — tap/click the sea to sail ─
     this.input.on('pointerdown', this.onSeaPointer, this);
     this.input.on('pointermove', (pointer, over) => {
       if (pointer.isDown) this.onSeaPointer(pointer, over);
     });
-    // silent keyboard fallback for desktop players
     this.cursors = this.input.keyboard.createCursorKeys();
     this.wasd = this.input.keyboard.addKeys({ up: 'W', down: 'S', left: 'A', right: 'D' });
 
@@ -80,11 +74,14 @@ export class GameScene extends Phaser.Scene {
       this.scale.off('resize', this.layout, this);
     });
     this.events.on(Phaser.Scenes.Events.RESUME, () => {
+      // Sync ship position after teleport or port visit
+      this.ship.x = this.player.x;
+      this.ship.y = this.player.y;
+      this.refreshPortVisuals();
       this.refreshHUD();
       saveGame(this.player);
     });
 
-    // water animation
     this.waterFrame = 0;
     this.time.addEvent({
       delay: 380, loop: true,
@@ -110,43 +107,58 @@ export class GameScene extends Phaser.Scene {
     this.water = this.toWorld(this.add.tileSprite(0, 0, MAP_W, MAP_H, 'water0')
       .setOrigin(0).setDepth(0).setTileScale(SCALE));
 
-    // risk band tinting — east gets darker and meaner
-    const bands = this.toWorld(this.add.graphics().setDepth(1));
-    bands.fillStyle(0x9fe8f0, 0.07);
-    bands.fillRect(0, 0, ZONES[0].maxX, MAP_H);
-    bands.fillStyle(0x0a2050, 0.10);
-    bands.fillRect(ZONES[1].maxX, 0, MAP_W - ZONES[1].maxX, MAP_H);
-    // soft band borders
-    bands.fillStyle(0x0a2050, 0.05);
-    bands.fillRect(ZONES[0].maxX, 0, 40, MAP_H);
-    bands.fillRect(ZONES[1].maxX - 40, 0, 40, MAP_H);
+    // Ring zone visualization: light center, visible ring borders
+    const ringGfx = this.toWorld(this.add.graphics().setDepth(1));
+    ringGfx.fillStyle(0x9fe8f0, 0.05);
+    ringGfx.fillCircle(MAP_CX, MAP_CY, RING_RADII[0]);
+    ringGfx.lineStyle(5, 0x5090c8, 0.22);
+    ringGfx.strokeCircle(MAP_CX, MAP_CY, RING_RADII[0]);
+    ringGfx.lineStyle(5, 0x804828, 0.22);
+    ringGfx.strokeCircle(MAP_CX, MAP_CY, RING_RADII[1]);
+    ringGfx.lineStyle(5, 0xc03018, 0.18);
+    ringGfx.strokeCircle(MAP_CX, MAP_CY, RING_RADII[2]);
 
-    // decorative islets (fixed layout, no collision drama)
+    // Decorative islets
     const islets = [
-      [700, 250], [950, 1300], [1550, 500], [820, 800],
-      [1700, 1450], [2200, 250], [300, 1450], [1500, 1150],
+      [2200, 2100], [2800, 2150], [2400, 2700],
+      [1700, 1700], [3300, 2000], [2100, 3200], [3000, 3300],
+      [1600, 3000], [2900, 1600], [2200, 3800],
+      [1200, 1500], [3800, 1400], [1100, 3200], [4000, 2900],
+      [2700, 4500], [1500, 4600], [3600, 4400], [800,  1800],
+      [4600, 2000], [4400, 4100],
+      [400,  2000], [200,  3500], [4700, 1200], [4900, 4000],
+      [1000, 800],  [4000, 500],  [300,  800],
     ];
     islets.forEach(([x, y]) => {
       this.toWorld(this.add.image(x, y, 'islet').setScale(SCALE).setDepth(2));
     });
 
-    // ports
+    // Ports
+    const owned = this.player.ownedPorts || ['port_haven'];
     this.portViews = PORTS.map(port => {
-      const img = this.toWorld(this.add.image(port.x, port.y, port.zone === 2 ? 'islandDanger' : 'islandSafe')
-        .setScale(SCALE).setDepth(3));
+      const isOwned = owned.includes(port.id);
+      const texKey = isOwned ? 'islandOwned' : (port.ring >= 2 ? 'islandDanger' : 'islandSafe');
+      const img = this.toWorld(this.add.image(port.x, port.y, texKey).setScale(SCALE).setDepth(3));
       img.setInteractive({ useHandCursor: true });
       img.on('pointerdown', () => {
         if (this.distTo(port.x, port.y) < DOCK_DIST) this.openPort(port);
       });
+      const nameColor = port.ring === 3 ? '#ff9070' : port.ring === 2 ? '#ffb888' : '#fff3c8';
       this.toWorld(this.add.text(port.x, port.y + 86, port.name,
-        textStyle(13, port.zone === 2 ? '#ffb0a0' : '#fff3c8')
-      ).setOrigin(0.5, 0).setDepth(4));
+        textStyle(13, nameColor)).setOrigin(0.5, 0).setDepth(4));
       return { port, img };
     });
 
-    // sail-target flag
     this.flag = this.toWorld(this.add.image(0, 0, 'flagMarker').setScale(SCALE).setDepth(5).setVisible(false));
     this.tweens.add({ targets: this.flag, y: '-=6', duration: 500, yoyo: true, repeat: -1 });
+  }
+
+  refreshPortVisuals() {
+    const owned = this.player.ownedPorts || ['port_haven'];
+    this.portViews.forEach(({ port, img }) => {
+      const isOwned = owned.includes(port.id);
+      img.setTexture(isOwned ? 'islandOwned' : (port.ring >= 2 ? 'islandDanger' : 'islandSafe'));
+    });
   }
 
   buildShip() {
@@ -157,29 +169,39 @@ export class GameScene extends Phaser.Scene {
 
   buildPirates() {
     this.pirates = [];
-    // band 1: three Freibeuter/Korsaren, band 2: four tougher ones
     const plan = [
-      { zone: 1, tier: 0 }, { zone: 1, tier: 0 }, { zone: 1, tier: 1 },
-      { zone: 2, tier: 1 }, { zone: 2, tier: 2 }, { zone: 2, tier: 2 }, { zone: 2, tier: 1 },
+      // Ring 1 — Freibeuter / Korsar
+      { ring: 1, tier: 0 }, { ring: 1, tier: 0 }, { ring: 1, tier: 1 },
+      { ring: 1, tier: 0 }, { ring: 1, tier: 1 },
+      // Ring 2 — Korsar / Schwarze Galeone
+      { ring: 2, tier: 1 }, { ring: 2, tier: 1 }, { ring: 2, tier: 2 },
+      { ring: 2, tier: 2 }, { ring: 2, tier: 1 }, { ring: 2, tier: 2 }, { ring: 2, tier: 1 },
+      // Ring 3 — Schwarze Galeone / Todesgaleone
+      { ring: 3, tier: 2 }, { ring: 3, tier: 3 }, { ring: 3, tier: 2 },
+      { ring: 3, tier: 3 }, { ring: 3, tier: 3 }, { ring: 3, tier: 2 },
+      { ring: 3, tier: 3 }, { ring: 3, tier: 3 },
     ];
-    plan.forEach(cfg => this.spawnPirate(cfg.zone, cfg.tier));
+    plan.forEach(cfg => this.spawnPirate(cfg.ring, cfg.tier));
   }
 
-  spawnPirate(zone, tierIdx) {
+  spawnPirate(ring, tierIdx) {
     const tier = PIRATE_TIERS[tierIdx];
-    const minX = zone === 1 ? ZONES[0].maxX + 100 : ZONES[1].maxX + 100;
-    const maxX = zone === 1 ? ZONES[1].maxX - 100 : MAP_W - 80;
+    const minR = ring === 1 ? RING_RADII[0] + 100 : ring === 2 ? RING_RADII[1] + 100 : RING_RADII[2] + 100;
+    const maxR = ring === 1 ? RING_RADII[1] - 100 : ring === 2 ? RING_RADII[2] - 100 : Math.min(MAP_W, MAP_H) * 0.68;
+
     let x, y, tries = 0;
     do {
-      x = Phaser.Math.Between(minX, maxX);
-      y = Phaser.Math.Between(80, MAP_H - 80);
+      const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
+      const dist = Phaser.Math.FloatBetween(minR, maxR);
+      x = Phaser.Math.Clamp(MAP_CX + Math.cos(angle) * dist, 80, MAP_W - 80);
+      y = Phaser.Math.Clamp(MAP_CY + Math.sin(angle) * dist, 80, MAP_H - 80);
       tries++;
     } while (tries < 30 && (this.nearAnyPort(x, y) || this.distTo(x, y) < 500));
 
     const spr = this.toWorld(this.add.image(x, y, tier.texture).setScale(SCALE).setDepth(8));
     const bar = this.toWorld(this.add.graphics().setDepth(11));
     const pirate = {
-      spr, bar, tierIdx, tier, zone,
+      spr, bar, tierIdx, tier, ring,
       hull: tier.hull,
       heading: Phaser.Math.FloatBetween(0, Math.PI * 2),
       home: { x, y },
@@ -191,13 +213,22 @@ export class GameScene extends Phaser.Scene {
     return pirate;
   }
 
+  portSafeRadius(port) {
+    const owned = this.player.ownedPorts || [];
+    if (!owned.includes(port.id)) return PORT_SAFE_RADIUS;
+    return portGarrisonRadius(this.player.portUpgrades?.[port.id]);
+  }
+
   nearAnyPort(x, y) {
-    return PORTS.some(p => Phaser.Math.Distance.Between(x, y, p.x, p.y) < PORT_SAFE_RADIUS);
+    return PORTS.some(p => Phaser.Math.Distance.Between(x, y, p.x, p.y) < this.portSafeRadius(p));
   }
 
   buildStorms() {
     this.storms = [];
-    const spots = [[1300, 200], [1500, 1300], [2100, 800]];
+    const spots = [
+      [1400, 1800], [3600, 1300], [1300, 3700],
+      [4000, 3500], [2500, 4400], [1000, 2600],
+    ];
     spots.forEach(([x, y]) => {
       const c = this.toWorld(this.add.container(x, y).setDepth(20).setAlpha(0.9));
       [[-40, -10], [30, -22], [0, 14], [-15, -30], [40, 18]].forEach(([ox, oy]) => {
@@ -215,7 +246,7 @@ export class GameScene extends Phaser.Scene {
 
   buildCrates() {
     this.crates = [];
-    for (let i = 0; i < 6; i++) this.spawnCrate();
+    for (let i = 0; i < 8; i++) this.spawnCrate();
   }
 
   spawnCrate() {
@@ -228,7 +259,7 @@ export class GameScene extends Phaser.Scene {
     if (this.nearAnyPort(x, y)) return;
     const spr = this.toWorld(this.add.image(x, y, 'crate').setScale(SCALE).setDepth(6));
     this.tweens.add({ targets: spr, angle: 8, duration: 1200, yoyo: true, repeat: -1 });
-    this.crates.push({ spr, zone: zoneAt(x) });
+    this.crates.push({ spr, ring: ringAt(x, y) });
   }
 
   // ── HUD ────────────────────────────────────────────────────────────────────
@@ -255,13 +286,10 @@ export class GameScene extends Phaser.Scene {
     this.zoneTxt = this.add.text(0, 0, '', textStyle(12, '#9fe8f0')).setOrigin(0.5, 0);
     this.hud.add(this.zoneTxt);
 
-    // minimap
     this.minimap = this.toUI(this.add.graphics().setScrollFactor(0).setDepth(100));
 
-    // dock button (bottom center, thumb-friendly)
     this.dockBtn = null;
 
-    // menu (anchor) button
     this.menuBtn = this.toUI(makeButton(this, 0, 0, 44, 38, '⚓', 'normal', () => {
       saveGame(this.player);
       this.scene.start('MenuScene');
@@ -273,9 +301,6 @@ export class GameScene extends Phaser.Scene {
   }
 
   layout() {
-    // NOTE: don't gate on scene.isActive() — during create() the scene is
-    // still CREATING, which silently skipped the initial layout and left the
-    // whole HUD stacked at (0,0).
     if (!this.hudBg) return;
     this.applyZoom();
     const W = this.scale.width;
@@ -293,21 +318,18 @@ export class GameScene extends Phaser.Scene {
       const slice1 = (W - 10) / 3;
       row1.forEach((s, i) => {
         const x = 10 + i * slice1;
-        s.img.setPosition(x + 8, 20);
-        s.txt.setPosition(x + 20, 20);
+        s.img.setPosition(x + 8, 20); s.txt.setPosition(x + 20, 20);
       });
       const slice2 = (W - 10) / 2;
       row2.forEach((s, i) => {
         const x = 10 + i * slice2;
-        s.img.setPosition(x + 8, 50);
-        s.txt.setPosition(x + 20, 50);
+        s.img.setPosition(x + 8, 50); s.txt.setPosition(x + 20, 50);
       });
     } else {
       const slice = Math.min(140, (W - 60) / stats.length);
       stats.forEach((s, i) => {
         const x = 14 + i * slice;
-        s.img.setPosition(x + 8, 20);
-        s.txt.setPosition(x + 20, 20);
+        s.img.setPosition(x + 8, 20); s.txt.setPosition(x + 20, 20);
       });
     }
 
@@ -334,27 +356,37 @@ export class GameScene extends Phaser.Scene {
     const g = this.minimap;
     const W = this.scale.width;
     const mw = Math.min(132, W * 0.28);
-    const mh = mw * (MAP_H / MAP_W);
+    const mh = mw; // map is now square
     const narrow = W < 500;
-    const my = narrow ? 104 : 96; // slightly lower if on narrow to stay under menu button
+    const my = narrow ? 104 : 96;
     const mx = W - mw - 10;
     const sx = mw / MAP_W, sy = mh / MAP_H;
     g.clear();
     g.fillStyle(0x0a1420, 0.4);
     g.fillRect(mx - 3, my - 3, mw + 6, mh + 6);
-    g.fillStyle(0x1672ae, 0.6); // more transparent water on minimap
+    g.fillStyle(0x1672ae, 0.6);
     g.fillRect(mx, my, mw, mh);
-    g.fillStyle(0x9fe8f0, 0.18);
-    g.fillRect(mx, my, ZONES[0].maxX * sx, mh);
-    g.fillStyle(0x0a1030, 0.4);
-    g.fillRect(mx + ZONES[1].maxX * sx, my, mw - ZONES[1].maxX * sx, mh);
+
+    // Ring circles
+    const cx = mx + MAP_CX * sx, cy = my + MAP_CY * sy;
+    g.lineStyle(1, 0x5090c8, 0.5);
+    g.strokeCircle(cx, cy, RING_RADII[0] * sx);
+    g.lineStyle(1, 0x804828, 0.5);
+    g.strokeCircle(cx, cy, RING_RADII[1] * sx);
+    g.lineStyle(1, 0xc03018, 0.4);
+    g.strokeCircle(cx, cy, RING_RADII[2] * sx);
+
     g.lineStyle(2, COLORS.panelEdge, 1);
     g.strokeRect(mx - 3, my - 3, mw + 6, mh + 6);
 
+    const owned = this.player.ownedPorts || ['port_haven'];
     PORTS.forEach(p => {
-      g.fillStyle(p.zone === 2 ? 0xff7050 : 0xffd23f, 1);
-      g.fillRect(mx + p.x * sx - 2, my + p.y * sy - 2, 4, 4);
+      const isOwned = owned.includes(p.id);
+      g.fillStyle(isOwned ? 0xffd23f : (p.ring >= 2 ? 0xff7050 : 0xffd23f), 1);
+      const dotSize = isOwned ? 5 : 4;
+      g.fillRect(mx + p.x * sx - dotSize / 2, my + p.y * sy - dotSize / 2, dotSize, dotSize);
     });
+
     if (this.storms) this.storms.forEach(s => {
       g.fillStyle(0x8a98a4, 0.8);
       g.fillCircle(mx + s.c.x * sx, my + s.c.y * sy, 3);
@@ -395,7 +427,7 @@ export class GameScene extends Phaser.Scene {
 
   onSeaPointer(pointer, currentlyOver) {
     if (this.wrecked) return;
-    if (currentlyOver && currentlyOver.length > 0) return; // UI or port tap
+    if (currentlyOver && currentlyOver.length > 0) return;
     const wp = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
     this.sailTarget = {
       x: Phaser.Math.Clamp(wp.x, 30, MAP_W - 30),
@@ -416,6 +448,7 @@ export class GameScene extends Phaser.Scene {
     this.updatePirates(dt, delta);
     this.updateBalls(dt);
     this.updateStorms(dt, delta);
+    this.updatePortBatteries(delta);
     this.checkCrates();
     this.checkDockProximity();
     this.advanceDay(delta);
@@ -424,10 +457,10 @@ export class GameScene extends Phaser.Scene {
 
   handleKeyboard() {
     let vx = 0, vy = 0;
-    if (this.cursors.left.isDown || this.wasd.left.isDown) vx -= 1;
+    if (this.cursors.left.isDown  || this.wasd.left.isDown)  vx -= 1;
     if (this.cursors.right.isDown || this.wasd.right.isDown) vx += 1;
-    if (this.cursors.up.isDown || this.wasd.up.isDown) vy -= 1;
-    if (this.cursors.down.isDown || this.wasd.down.isDown) vy += 1;
+    if (this.cursors.up.isDown    || this.wasd.up.isDown)    vy -= 1;
+    if (this.cursors.down.isDown  || this.wasd.down.isDown)  vy += 1;
     if (vx || vy) {
       this.sailTarget = {
         x: Phaser.Math.Clamp(this.ship.x + vx * 220, 30, MAP_W - 30),
@@ -459,7 +492,6 @@ export class GameScene extends Phaser.Scene {
     this.ship.y = Phaser.Math.Clamp(this.ship.y + Math.sin(this.heading) * speed * dt, 24, MAP_H - 24);
     this.pushOffIslands(this.ship);
 
-    // snap visual rotation to 16 directions for the retro feel
     const rot = this.heading + Math.PI / 2;
     this.ship.rotation = Math.round(rot / (Math.PI / 8)) * (Math.PI / 8);
 
@@ -489,7 +521,7 @@ export class GameScene extends Phaser.Scene {
     this.wake.fillEllipse(bx - Math.cos(heading) * 14, by - Math.sin(heading) * 14, 20, 10);
   }
 
-  // ── Combat: sail to dodge, cannons fire on their own ──────────────────────
+  // ── Combat ─────────────────────────────────────────────────────────────────
 
   updateCombat(delta) {
     this.fireCooldown -= delta;
@@ -514,7 +546,6 @@ export class GameScene extends Phaser.Scene {
   }
 
   shoot(fromSpr, targetSpr, dmg, friendly) {
-    // aim a touch ahead of where the target drifts
     const dx = targetSpr.x - fromSpr.x;
     const dy = targetSpr.y - fromSpr.y;
     const a = Math.atan2(dy, dx) + Phaser.Math.FloatBetween(-0.07, 0.07);
@@ -593,7 +624,6 @@ export class GameScene extends Phaser.Scene {
     saveGame(p);
     this.refreshHUD();
 
-    // respawn somewhere else after a while
     this.time.delayedCall(Phaser.Math.Between(25000, 50000), () => {
       if (!this.scene.isActive()) return;
       const idx = this.pirates.indexOf(pi);
@@ -602,21 +632,49 @@ export class GameScene extends Phaser.Scene {
         pi.bar.destroy();
         this.pirates.splice(idx, 1);
       }
-      this.spawnPirate(pi.zone, pi.tierIdx);
+      this.spawnPirate(pi.ring, pi.tierIdx);
     });
+  }
+
+  // ── Port cannon batteries ──────────────────────────────────────────────────
+
+  updatePortBatteries(delta) {
+    const owned = this.player.ownedPorts || [];
+    for (const port of PORTS) {
+      if (!owned.includes(port.id)) continue;
+      const upgrades = this.player.portUpgrades?.[port.id] || {};
+      const level = upgrades.cannon || 0;
+      if (level === 0) continue;
+
+      this.portBatteryCooldowns[port.id] = (this.portBatteryCooldowns[port.id] || 0) - delta;
+      if (this.portBatteryCooldowns[port.id] > 0) continue;
+
+      const range = 400 + level * 100;
+      const cooldown = 3200 - level * 400;
+      const dmg = level * 18;
+
+      const target = this.pirates.find(pi =>
+        pi.hull > 0 &&
+        Phaser.Math.Distance.Between(pi.spr.x, pi.spr.y, port.x, port.y) < range
+      );
+      if (!target) continue;
+
+      this.shoot({ x: port.x, y: port.y }, target.spr, dmg, true);
+      this.portBatteryCooldowns[port.id] = cooldown;
+    }
   }
 
   // ── Pirate AI ──────────────────────────────────────────────────────────────
 
   updatePirates(dt, delta) {
     const playerSafe = this.nearAnyPort(this.ship.x, this.ship.y);
+    const playerRing = ringAt(this.ship.x, this.ship.y);
 
     this.pirates.forEach(pi => {
       if (pi.hull <= 0) return;
       const d = Phaser.Math.Distance.Between(pi.spr.x, pi.spr.y, this.ship.x, this.ship.y);
 
-      // state changes
-      if (pi.state !== 'chase' && !playerSafe && d < pi.tier.aggro && zoneAt(this.ship.x) >= 1) {
+      if (pi.state !== 'chase' && !playerSafe && d < pi.tier.aggro && playerRing >= 1) {
         pi.state = 'chase';
       }
       if (pi.state === 'chase' && (playerSafe || d > pi.tier.aggro * 2.2)) {
@@ -641,7 +699,6 @@ export class GameScene extends Phaser.Scene {
 
       const want = Math.atan2(ty - pi.spr.y, tx - pi.spr.x);
       pi.heading = Phaser.Math.Angle.RotateTo(pi.heading, want, 2.4 * dt);
-      // keep some distance in close combat so it stays a cannon duel
       const move = (pi.state === 'chase' && d < 120) ? 0 : speed * dt;
       pi.spr.x = Phaser.Math.Clamp(pi.spr.x + Math.cos(pi.heading) * move, 24, MAP_W - 24);
       pi.spr.y = Phaser.Math.Clamp(pi.spr.y + Math.sin(pi.heading) * move, 24, MAP_H - 24);
@@ -649,7 +706,6 @@ export class GameScene extends Phaser.Scene {
       const rot = pi.heading + Math.PI / 2;
       pi.spr.rotation = Math.round(rot / (Math.PI / 8)) * (Math.PI / 8);
 
-      // shooting
       pi.cooldown -= delta;
       if (pi.state === 'chase' && !playerSafe && pi.cooldown <= 0 && d < pi.tier.range) {
         const dmg = Phaser.Math.Between(pi.tier.dmg[0], pi.tier.dmg[1]);
@@ -657,7 +713,6 @@ export class GameScene extends Phaser.Scene {
         pi.cooldown = pi.tier.fireRate;
       }
 
-      // health bar when damaged
       pi.bar.clear();
       if (pi.hull < pi.tier.hull) {
         const w = 40, frac = Math.max(0, pi.hull / pi.tier.hull);
@@ -673,6 +728,8 @@ export class GameScene extends Phaser.Scene {
 
   updateStorms(dt, delta) {
     let inStorm = false;
+    const minStormDist = RING_RADII[0] + 150;
+
     this.storms.forEach(s => {
       s.turnTimer -= delta;
       if (s.turnTimer <= 0) {
@@ -682,11 +739,22 @@ export class GameScene extends Phaser.Scene {
       }
       s.c.x += s.vx * dt;
       s.c.y += s.vy * dt;
-      // storms live in the open sea and beyond, never in home waters
-      if (s.c.x < ZONES[0].maxX + 120) { s.c.x = ZONES[0].maxX + 120; s.vx = Math.abs(s.vx); }
+
+      // Bounce off map edges
+      if (s.c.x < 80)         { s.c.x = 80;         s.vx =  Math.abs(s.vx); }
       if (s.c.x > MAP_W - 80) { s.c.x = MAP_W - 80; s.vx = -Math.abs(s.vx); }
-      if (s.c.y < 100) { s.c.y = 100; s.vy = Math.abs(s.vy); }
-      if (s.c.y > MAP_H - 100) { s.c.y = MAP_H - 100; s.vy = -Math.abs(s.vy); }
+      if (s.c.y < 80)         { s.c.y = 80;          s.vy =  Math.abs(s.vy); }
+      if (s.c.y > MAP_H - 80) { s.c.y = MAP_H - 80;  s.vy = -Math.abs(s.vy); }
+
+      // Keep storms outside the safe home zone
+      const distCenter = Math.hypot(s.c.x - MAP_CX, s.c.y - MAP_CY);
+      if (distCenter < minStormDist) {
+        const angle = Math.atan2(s.c.y - MAP_CY, s.c.x - MAP_CX);
+        s.c.x = MAP_CX + Math.cos(angle) * minStormDist;
+        s.c.y = MAP_CY + Math.sin(angle) * minStormDist;
+        s.vx = Math.cos(angle) * 14;
+        s.vy = Math.sin(angle) * 10;
+      }
 
       if (Phaser.Math.Distance.Between(s.c.x, s.c.y, this.ship.x, this.ship.y) < s.radius) {
         inStorm = true;
@@ -711,7 +779,7 @@ export class GameScene extends Phaser.Scene {
     for (let i = this.crates.length - 1; i >= 0; i--) {
       const c = this.crates[i];
       if (Phaser.Math.Distance.Between(c.spr.x, c.spr.y, this.ship.x, this.ship.y) < 40) {
-        const base = [20, 50, 110][c.zone] || 20;
+        const base = [20, 50, 110, 250][c.ring] || 20;
         const gold = Phaser.Math.Between(base, base * 2);
         this.player.gold += gold;
         showToast(this, `Treibende Fracht geborgen: +${gold} Gold`, '#ffd23f');
@@ -738,11 +806,12 @@ export class GameScene extends Phaser.Scene {
       this.positionDockBtn();
     }
 
-    const zone = ZONES[zoneAt(this.ship.x)];
-    const label = near ? `⚓ ${near.name}` : zone.name;
+    const ring = ringAt(this.ship.x, this.ship.y);
+    const label = near ? `⚓ ${near.name}` : RINGS[ring].name;
+    const color = ring === 3 ? '#ff8060' : ring === 2 ? '#ffb070' : '#9fe8f0';
     if (this.zoneTxt.text !== label) {
       this.zoneTxt.setText(label);
-      this.zoneTxt.setColor(zoneAt(this.ship.x) === 2 ? '#ff9080' : '#9fe8f0');
+      this.zoneTxt.setColor(color);
     }
   }
 
@@ -760,7 +829,7 @@ export class GameScene extends Phaser.Scene {
     return Phaser.Math.Distance.Between(this.ship.x, this.ship.y, x, y);
   }
 
-  // ── Shipwreck: harsh but not the end — this is a long game ────────────────
+  // ── Shipwreck ──────────────────────────────────────────────────────────────
 
   shipwreck() {
     if (this.wrecked) return;

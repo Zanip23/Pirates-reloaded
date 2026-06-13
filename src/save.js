@@ -33,6 +33,14 @@ export function loadGame() {
       data.upgradeLevel = {};
     }
 
+    if (!Array.isArray(data.ownedPorts)) data.ownedPorts = ['port_haven'];
+    if (!data.portUpgrades || typeof data.portUpgrades !== 'object') data.portUpgrades = {};
+    if (!data.portWarehouse || typeof data.portWarehouse !== 'object') data.portWarehouse = {};
+    if (typeof data.teleportLastDay !== 'number') data.teleportLastDay = 0;
+
+    // Migrate from old map coordinate system (old map was 2400×1600)
+    if (data.x < 1000 || data.y < 1000) { data.x = 2500; data.y = 2420; }
+
     return data;
   } catch (e) {
     return null;
