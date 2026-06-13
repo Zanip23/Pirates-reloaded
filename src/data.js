@@ -319,26 +319,33 @@ export function shipStats(player) {
   };
 }
 
+// salvo   = cannonballs fired per volley (broadside)
+// spread  = aiming inaccuracy / fan width in radians (lower = more accurate)
+// standoff = preferred orbit distance the NPC tries to hold while attacking
 export const PIRATE_TIERS = [
   {
     name: 'Freibeuter', texture: 'pirate0',
     hull: 45, dmg: [4, 7], speed: 92, range: 205, fireRate: 1700,
     loot: [30, 70], aggro: 330,
+    salvo: 1, spread: 0.10, standoff: 150,
   },
   {
     name: 'Korsar', texture: 'pirate1',
-    hull: 90, dmg: [7, 12], speed: 112, range: 220, fireRate: 1500,
+    hull: 90, dmg: [5, 9], speed: 112, range: 220, fireRate: 1500,
     loot: [90, 170], aggro: 380,
+    salvo: 2, spread: 0.085, standoff: 160,
   },
   {
     name: 'Schwarze Galeone', texture: 'pirate2',
-    hull: 150, dmg: [12, 19], speed: 128, range: 235, fireRate: 1350,
+    hull: 150, dmg: [7, 12], speed: 128, range: 235, fireRate: 1350,
     loot: [200, 380], aggro: 430,
+    salvo: 2, spread: 0.07, standoff: 170,
   },
   {
     name: 'Todesgaleone', texture: 'pirate3',
-    hull: 220, dmg: [18, 28], speed: 138, range: 250, fireRate: 1200,
+    hull: 220, dmg: [9, 15], speed: 138, range: 250, fireRate: 1200,
     loot: [420, 760], aggro: 480,
+    salvo: 3, spread: 0.06, standoff: 185,
   },
 ];
 
