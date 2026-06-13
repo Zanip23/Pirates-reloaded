@@ -143,6 +143,33 @@ function makeIsland(scene, key, danger) {
   tex.refresh();
 }
 
+function makeIslandOwned(scene) {
+  const tex = canvas(scene, 'islandOwned', 64, 52);
+  const ctx = tex.context;
+  blob(ctx, 32, 24, 30, 21, PAL.waterLight);
+  blob(ctx, 32, 24, 27, 18, PAL.foam);
+  blob(ctx, 32, 24, 25, 16, PAL.sand);
+  blob(ctx, 20, 30, 8, 5, PAL.sandDark);
+  blob(ctx, 32, 21, 17, 10, PAL.grass);
+  blob(ctx, 26, 19, 8, 5, PAL.grassDark);
+  [[15, 18], [48, 16]].forEach(([x, y]) => {
+    P(ctx, x, y, 1, 4, PAL.trunk);
+    P(ctx, x - 2, y - 2, 5, 2, PAL.palm);
+    P(ctx, x - 1, y - 3, 3, 1, PAL.palm);
+  });
+  [[28, 18], [35, 16], [31, 22]].forEach(([x, y]) => {
+    P(ctx, x, y + 2, 5, 3, PAL.wall);
+    P(ctx, x, y, 5, 2, PAL.roof);
+  });
+  P(ctx, 30, 36, 4, 12, PAL.trunk);
+  P(ctx, 26, 46, 12, 2, PAL.hullDark);
+  // gold flag = player-owned port
+  P(ctx, 40, 8, 1, 9, PAL.mast);
+  P(ctx, 41, 8, 6, 4, PAL.gold);
+  P(ctx, 42, 9, 3, 2, PAL.goldDark);
+  tex.refresh();
+}
+
 function makeIslet(scene) {
   const tex = canvas(scene, 'islet', 24, 18);
   const ctx = tex.context;
@@ -289,9 +316,11 @@ export function createAllTextures(scene) {
   makeShip(scene, 'pirate0', PAL.pirateGray, '#7a8088', PAL.hullDark, PAL.black, PAL.black);
   makeShip(scene, 'pirate1', PAL.pirateRed, '#7a2828', PAL.hullDark, PAL.black, PAL.black);
   makeShip(scene, 'pirate2', PAL.pirateBlack, PAL.black, PAL.black, '#000008', PAL.black);
+  makeShip(scene, 'pirate3', '#6a0010', '#440008', '#16161c', '#0a0a10', '#ff2020');
 
   makeIsland(scene, 'islandSafe', false);
   makeIsland(scene, 'islandDanger', true);
+  makeIslandOwned(scene);
   makeIslet(scene);
 
   makeBall(scene);
