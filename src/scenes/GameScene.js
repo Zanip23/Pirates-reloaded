@@ -349,12 +349,11 @@ export class GameScene extends Phaser.Scene {
     const g = this.minimap;
     const W = this.scale.width;
 
-    // Leuchtturm: jede Stufe vergrößert die Minimap um 3px, max +60px
-    const lighthouseBonus = Math.min(
-      (this.player.ownedPorts || []).reduce((sum, portId) =>
-        sum + (this.player.portUpgrades?.[portId]?.lighthouse || 0), 0) * 3,
-      60
-    );
+    // Leuchtturm: höchste Stufe unter allen eigenen Häfen × 15px, max +75px
+    const owned = this.player.ownedPorts || ['port_haven'];
+    const maxLighthouseLvl = owned.reduce((max, portId) =>
+      Math.max(max, this.player.portUpgrades?.[portId]?.lighthouse || 0), 0);
+    const lighthouseBonus = maxLighthouseLvl * 15;
 
     const mw = Math.min(132 + lighthouseBonus, W * 0.38);
     const mh = mw; // Karte ist quadratisch
@@ -380,8 +379,23 @@ export class GameScene extends Phaser.Scene {
     g.lineStyle(2, COLORS.panelEdge, 1);
     g.strokeRect(mx - 3, my - 3, mw + 6, mh + 6);
 
+    // Leuchtturm-Detektionszonen aufbauen
+    const lighthouseZones = [];
+    owned.forEach(portId => {
+      const lvl = this.player.portUpgrades?.[portId]?.lighthouse || 0;
+      if (lvl === 0) return;
+      const port = PORTS.find(p => p.id === portId);
+      if (!port) return;
+      lighthouseZones.push({ x: port.x, y: port.y, range: 300 + lvl * 200 });
+    });
+
+    // Leuchtturm-Radien auf Minimap anzeigen (gelb, dezent)
+    lighthouseZones.forEach(z => {
+      g.lineStyle(1, 0xffe066, 0.35);
+      g.strokeCircle(mx + z.x * sx, my + z.y * sy, z.range * sx);
+    });
+
     // Häfen: Kanonenreichweite für aktive Batterien anzeigen
-    const owned = this.player.ownedPorts || ['port_haven'];
     PORTS.forEach(p => {
       const isOwned = owned.includes(p.id);
       if (isOwned) {
@@ -402,11 +416,21 @@ export class GameScene extends Phaser.Scene {
       g.fillStyle(0x8a98a4, 0.8);
       g.fillCircle(mx + s.c.x * sx, my + s.c.y * sy, 3);
     });
+
+    // Piraten: nur sichtbar wenn nahe am Spieler ODER im Leuchtturm-Radius
+    const playerSightRange = 550;
     if (this.pirates) this.pirates.forEach(pi => {
       if (pi.hull <= 0) return;
-      g.fillStyle(0x16161c, 1);
+      const nearPlayer = Phaser.Math.Distance.Between(
+        pi.spr.x, pi.spr.y, this.ship.x, this.ship.y) < playerSightRange;
+      const inLighthouse = lighthouseZones.some(z =>
+        Phaser.Math.Distance.Between(pi.spr.x, pi.spr.y, z.x, z.y) < z.range);
+      if (!nearPlayer && !inLighthouse) return;
+      // Orange wenn nur per Leuchtturm erkannt, Rot wenn in Sichtweite des Spielers
+      g.fillStyle(inLighthouse && !nearPlayer ? 0xffaa44 : 0xff4444, 1);
       g.fillRect(mx + pi.spr.x * sx - 1, my + pi.spr.y * sy - 1, 3, 3);
     });
+
     g.fillStyle(0xffffff, 1);
     g.fillRect(mx + this.ship.x * sx - 2, my + this.ship.y * sy - 2, 4, 4);
   }
