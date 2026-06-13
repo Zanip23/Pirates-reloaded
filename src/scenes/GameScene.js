@@ -10,6 +10,7 @@ const DOCK_DIST = 130;
 const TURN_RATE = 3.2;
 const DAY_MS = 40000;
 const BALL_SPEED = 430;
+const JOY_RADIUS = 70;
 
 export class GameScene extends Phaser.Scene {
   constructor() {
@@ -61,10 +62,32 @@ export class GameScene extends Phaser.Scene {
     this.uiCam.ignore(this.worldLayer);
     cam.ignore(this.uiLayer);
 
-    this.input.on('pointerdown', this.onSeaPointer, this);
+    this._joy = null;
+    this.joyGfx = this.toUI(this.add.graphics().setScrollFactor(0).setDepth(201));
+
+    this.input.on('pointerdown', (pointer, over) => {
+      if (this.wrecked) return;
+      if (over && over.length > 0) return;
+      if (this._isTouchPointer(pointer)) {
+        if (!this._joy) this._joyStart(pointer);
+      } else {
+        this.onSeaPointer(pointer, over);
+      }
+    }, this);
+
     this.input.on('pointermove', (pointer, over) => {
-      if (pointer.isDown) this.onSeaPointer(pointer, over);
-    });
+      if (!pointer.isDown) return;
+      if (this._joy && pointer.id === this._joy.id) {
+        this._joyMove(pointer);
+      } else if (!this._isTouchPointer(pointer)) {
+        this.onSeaPointer(pointer, over);
+      }
+    }, this);
+
+    this.input.on('pointerup', (pointer) => {
+      if (this._joy && pointer.id === this._joy.id) this._joyEnd();
+    }, this);
+
     this.cursors = this.input.keyboard.createCursorKeys();
     this.wasd = this.input.keyboard.addKeys({ up: 'W', down: 'S', left: 'A', right: 'D' });
 
@@ -478,6 +501,7 @@ export class GameScene extends Phaser.Scene {
     const dt = delta / 1000;
 
     this.handleKeyboard();
+    this.handleJoystick();
     this.moveShip(dt);
     this.updateCombat(delta);
     this.updatePirates(dt, delta);
@@ -503,6 +527,63 @@ export class GameScene extends Phaser.Scene {
       };
       this.flag.setVisible(false);
     }
+  }
+
+  handleJoystick() {
+    if (!this._joy || this._joy.dist < 12) return;
+    const FAR = 2000;
+    const a = this._joy.angle;
+    this.sailTarget = {
+      x: Phaser.Math.Clamp(this.ship.x + Math.cos(a) * FAR, 30, MAP_W - 30),
+      y: Phaser.Math.Clamp(this.ship.y + Math.sin(a) * FAR, 30, MAP_H - 30),
+    };
+    this.flag.setVisible(false);
+  }
+
+  _isTouchPointer(pointer) {
+    const ev = pointer.event;
+    if (!ev) return false;
+    return ev.pointerType === 'touch' || (ev.type && ev.type.startsWith('touch'));
+  }
+
+  _joyStart(pointer) {
+    this._joy = { id: pointer.id, sx: pointer.x, sy: pointer.y, angle: 0, dist: 0 };
+    this._drawJoy(pointer.x, pointer.y, pointer.x, pointer.y);
+  }
+
+  _joyMove(pointer) {
+    if (!this._joy) return;
+    const dx = pointer.x - this._joy.sx;
+    const dy = pointer.y - this._joy.sy;
+    const dist = Math.hypot(dx, dy);
+    this._joy.angle = Math.atan2(dy, dx);
+    this._joy.dist = dist;
+    const clamped = Math.min(dist, JOY_RADIUS);
+    const norm = dist > 0.01 ? dist : 1;
+    const kx = this._joy.sx + (dx / norm) * clamped;
+    const ky = this._joy.sy + (dy / norm) * clamped;
+    this._drawJoy(this._joy.sx, this._joy.sy, kx, ky);
+  }
+
+  _joyEnd() {
+    this._joy = null;
+    this.joyGfx.clear();
+    this.sailTarget = null;
+    this.wake.clear();
+  }
+
+  _drawJoy(bx, by, kx, ky) {
+    const g = this.joyGfx;
+    g.clear();
+    const R = JOY_RADIUS;
+    g.fillStyle(0x000000, 0.22);
+    g.fillCircle(bx, by, R);
+    g.lineStyle(3, 0xffffff, 0.4);
+    g.strokeCircle(bx, by, R);
+    g.fillStyle(0xffffff, 0.55);
+    g.fillCircle(kx, ky, R * 0.38);
+    g.lineStyle(2, 0xffffff, 0.85);
+    g.strokeCircle(kx, ky, R * 0.38);
   }
 
   moveShip(dt) {
