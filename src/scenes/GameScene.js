@@ -670,14 +670,17 @@ export class GameScene extends Phaser.Scene {
 
   shoot(fromSpr, targetSpr, dmg, friendly, opts = {}) {
     const spread = opts.spread ?? 0.07;
+    const leadFactor = opts.leadFactor ?? 1;
     let aimX = targetSpr.x, aimY = targetSpr.y;
     // Lead the target: aim at the predicted intercept point so a moving
-    // (e.g. circling) target can actually be hit. Two iterations converge well.
+    // (e.g. circling) target can actually be hit. leadFactor < 1 makes the
+    // shooter under-lead, leaving counterplay for players who vary speed and
+    // heading. Two iterations converge well.
     if (opts.lead) {
       let t = Math.hypot(aimX - fromSpr.x, aimY - fromSpr.y) / BALL_SPEED;
       for (let i = 0; i < 2; i++) {
-        aimX = targetSpr.x + opts.lead.x * t;
-        aimY = targetSpr.y + opts.lead.y * t;
+        aimX = targetSpr.x + opts.lead.x * t * leadFactor;
+        aimY = targetSpr.y + opts.lead.y * t * leadFactor;
         t = Math.hypot(aimX - fromSpr.x, aimY - fromSpr.y) / BALL_SPEED;
       }
     }
@@ -883,7 +886,9 @@ export class GameScene extends Phaser.Scene {
         const salvo = pi.tier.salvo || 1;
         for (let s = 0; s < salvo; s++) {
           const dmg = Phaser.Math.Between(pi.tier.dmg[0], pi.tier.dmg[1]);
-          this.shoot(pi.spr, this.ship, dmg, false, { lead: this.playerVel, spread: pi.tier.spread });
+          this.shoot(pi.spr, this.ship, dmg, false, {
+            lead: this.playerVel, spread: pi.tier.spread, leadFactor: pi.tier.leadFactor,
+          });
         }
         pi.cooldown = pi.tier.fireRate;
       }
