@@ -230,8 +230,23 @@ export function priceWobble(portIndex, goodIndex, day) {
 
 export const PORT_UPGRADES = [
   {
-    id: 'cannon', name: 'Kanonenbatterie',
-    desc: 'Hafen feuert auf Piraten in der Nähe.',
+    id: 'cannon_count',  name: 'Anzahl Kanonen',
+    desc: 'Gleichzeitig abgefeuerte Kugeln pro Salve. Stufe 1 = 1 Kanone aktiv.',
+    maxLevel: 5,
+  },
+  {
+    id: 'cannon_radius', name: 'Kanonenreichweite',
+    desc: 'Reichweite der Kanonenbatterie. +100px je Stufe (Basis 400px).',
+    maxLevel: 5,
+  },
+  {
+    id: 'cannon_rate',   name: 'Schussfrequenz',
+    desc: 'Schnellere Salven. −400ms Ladezeit je Stufe (Minimum 1,5s).',
+    maxLevel: 5,
+  },
+  {
+    id: 'cannon_damage', name: 'Kanonenschaden',
+    desc: 'Schaden pro Kugel auf Piraten. +15 Schaden je Stufe (Basis 10).',
     maxLevel: 5,
   },
   {
@@ -245,13 +260,8 @@ export const PORT_UPGRADES = [
     maxLevel: 5,
   },
   {
-    id: 'garrison', name: 'Garnison',
-    desc: 'Größere Schutzzone um den Hafen.',
-    maxLevel: 5,
-  },
-  {
     id: 'lighthouse', name: 'Leuchtturm',
-    desc: 'Mehr Sichtweite auf der Minimap.',
+    desc: 'Vergrößert die Minimap (+3px je Stufe). Mehr Überblick über die See.',
     maxLevel: 5,
   },
 ];
@@ -265,8 +275,13 @@ export function portWarehouseCapacity(upgrades) {
   return (upgrades?.warehouse || 0) * 20;
 }
 
-export function portGarrisonRadius(upgrades) {
-  return 360 + (upgrades?.garrison || 0) * 80;
+export function portCannonStats(upgrades) {
+  return {
+    count:    upgrades?.cannon_count  || 0,
+    range:    400 + (upgrades?.cannon_radius || 0) * 100,
+    cooldown: Math.max(1500, 3500 - (upgrades?.cannon_rate   || 0) * 400),
+    damage:   10  + (upgrades?.cannon_damage || 0) * 15,
+  };
 }
 
 export const UPGRADES = [
@@ -337,8 +352,8 @@ export const RUMORS = [
   'Edelsteine aus Sturmfels sind die reinsten im Totenwasser.',
   'Je weiter außen, desto fetter die Beute treibender Frachtkisten.',
   'Die Todesgaleonen im Totenwasser versenken jeden Unerfahrenen.',
-  'In Sichtweite eines eigenen Hafens schlagen Piraten nicht an.',
-  'Eine Garnison schützt deinen Hafen auf weite Entfernung.',
+  'Kanonenbatterien in eigenen Häfen halten Piraten auf Abstand.',
+  'Mehr Kanonen bedeuten mehr gleichzeitige Salven gegen Angreifer.',
   'Ein eigener Handelsposten senkt die Einkaufspreise spürbar.',
   'Im Geisterschlund werden alle Waren zu Wucherpreisen gehandelt.',
   'Bluthafen zahlt Höchstpreise für Edelsteine.',
