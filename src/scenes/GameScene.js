@@ -1,13 +1,12 @@
 import {
   MAP_W, MAP_H, MAP_CX, MAP_CY, RING_RADII, RINGS, ringAt,
-  PORTS, PIRATE_TIERS, INITIAL_PLAYER, shipStats, portGarrisonRadius, clone,
+  PORTS, PIRATE_TIERS, INITIAL_PLAYER, shipStats, portCannonStats, clone,
 } from '../data.js';
 import { saveGame, loadGame } from '../save.js';
 import { SCALE } from '../textures.js';
 import { makeButton, showToast, textStyle, COLORS } from '../ui.js';
 
 const DOCK_DIST = 130;
-const PORT_SAFE_RADIUS = 360;
 const TURN_RATE = 3.2;
 const DAY_MS = 40000;
 const BALL_SPEED = 430;
@@ -213,14 +212,8 @@ export class GameScene extends Phaser.Scene {
     return pirate;
   }
 
-  portSafeRadius(port) {
-    const owned = this.player.ownedPorts || [];
-    if (!owned.includes(port.id)) return PORT_SAFE_RADIUS;
-    return portGarrisonRadius(this.player.portUpgrades?.[port.id]);
-  }
-
-  nearAnyPort(x, y) {
-    return PORTS.some(p => Phaser.Math.Distance.Between(x, y, p.x, p.y) < this.portSafeRadius(p));
+  nearAnyPort(x, y, radius = 150) {
+    return PORTS.some(p => Phaser.Math.Distance.Between(x, y, p.x, p.y) < radius);
   }
 
   buildStorms() {
@@ -387,16 +380,17 @@ export class GameScene extends Phaser.Scene {
     g.lineStyle(2, COLORS.panelEdge, 1);
     g.strokeRect(mx - 3, my - 3, mw + 6, mh + 6);
 
-    // Häfen: Garnison-Radius für eigene Häfen anzeigen
+    // Häfen: Kanonenreichweite für aktive Batterien anzeigen
     const owned = this.player.ownedPorts || ['port_haven'];
     PORTS.forEach(p => {
       const isOwned = owned.includes(p.id);
       if (isOwned) {
-        const garrisonLvl = this.player.portUpgrades?.[p.id]?.garrison || 0;
-        if (garrisonLvl > 0) {
-          const radius = portGarrisonRadius({ garrison: garrisonLvl }) * sx;
-          g.lineStyle(1, 0x5ce07a, 0.35);
-          g.strokeCircle(mx + p.x * sx, my + p.y * sy, radius);
+        const upg = this.player.portUpgrades?.[p.id] || {};
+        const cannonCount = upg.cannon_count || 0;
+        if (cannonCount > 0) {
+          const range = (400 + (upg.cannon_radius || 0) * 100) * sx;
+          g.lineStyle(1, 0xff8844, 0.45);
+          g.strokeCircle(mx + p.x * sx, my + p.y * sy, range);
         }
       }
       g.fillStyle(isOwned ? 0xffd23f : (p.ring >= 2 ? 0xff7050 : 0xaab8c0), 1);
@@ -659,42 +653,62 @@ export class GameScene extends Phaser.Scene {
     const owned = this.player.ownedPorts || [];
     for (const port of PORTS) {
       if (!owned.includes(port.id)) continue;
-      const upgrades = this.player.portUpgrades?.[port.id] || {};
-      const level = upgrades.cannon || 0;
-      if (level === 0) continue;
+      const stats = portCannonStats(this.player.portUpgrades?.[port.id] || {});
+      if (stats.count === 0) continue;
 
       this.portBatteryCooldowns[port.id] = (this.portBatteryCooldowns[port.id] || 0) - delta;
       if (this.portBatteryCooldowns[port.id] > 0) continue;
 
-      const range = 400 + level * 100;
-      const cooldown = 3200 - level * 400;
-      const dmg = level * 18;
+      const targets = this.pirates
+        .filter(pi => pi.hull > 0 &&
+          Phaser.Math.Distance.Between(pi.spr.x, pi.spr.y, port.x, port.y) < stats.range)
+        .sort((a, b) =>
+          Phaser.Math.Distance.Between(a.spr.x, a.spr.y, port.x, port.y) -
+          Phaser.Math.Distance.Between(b.spr.x, b.spr.y, port.x, port.y));
 
-      const target = this.pirates.find(pi =>
-        pi.hull > 0 &&
-        Phaser.Math.Distance.Between(pi.spr.x, pi.spr.y, port.x, port.y) < range
-      );
-      if (!target) continue;
+      if (targets.length === 0) continue;
 
-      this.shoot({ x: port.x, y: port.y }, target.spr, dmg, true);
-      this.portBatteryCooldowns[port.id] = cooldown;
+      for (let i = 0; i < stats.count; i++) {
+        const target = targets[i % targets.length];
+        this.time.delayedCall(i * 100, () => {
+          if (!this.scene.isActive()) return;
+          this.portMuzzleFlash(port.x, port.y);
+          this.shoot({ x: port.x, y: port.y }, target.spr, stats.damage, true);
+        });
+      }
+
+      this.portBatteryCooldowns[port.id] = stats.cooldown;
     }
+  }
+
+  portMuzzleFlash(x, y) {
+    const g = this.toWorld(this.add.graphics().setDepth(14));
+    g.fillStyle(0xffffff, 0.9);
+    g.fillCircle(x, y, 10);
+    g.fillStyle(0xffcc00, 0.8);
+    g.fillCircle(x, y, 18);
+    g.fillStyle(0xff8800, 0.5);
+    g.fillCircle(x, y, 28);
+    this.tweens.add({
+      targets: g, alpha: 0, scaleX: 1.8, scaleY: 1.8,
+      duration: 200, ease: 'Quad.Out',
+      onComplete: () => g.destroy(),
+    });
   }
 
   // ── Pirate AI ──────────────────────────────────────────────────────────────
 
   updatePirates(dt, delta) {
-    const playerSafe = this.nearAnyPort(this.ship.x, this.ship.y);
     const playerRing = ringAt(this.ship.x, this.ship.y);
 
     this.pirates.forEach(pi => {
       if (pi.hull <= 0) return;
       const d = Phaser.Math.Distance.Between(pi.spr.x, pi.spr.y, this.ship.x, this.ship.y);
 
-      if (pi.state !== 'chase' && !playerSafe && d < pi.tier.aggro && playerRing >= 1) {
+      if (pi.state !== 'chase' && d < pi.tier.aggro && playerRing >= 1) {
         pi.state = 'chase';
       }
-      if (pi.state === 'chase' && (playerSafe || d > pi.tier.aggro * 2.2)) {
+      if (pi.state === 'chase' && d > pi.tier.aggro * 2.2) {
         pi.state = 'roam';
         pi.roamTarget = null;
       }
@@ -724,7 +738,7 @@ export class GameScene extends Phaser.Scene {
       pi.spr.rotation = Math.round(rot / (Math.PI / 8)) * (Math.PI / 8);
 
       pi.cooldown -= delta;
-      if (pi.state === 'chase' && !playerSafe && pi.cooldown <= 0 && d < pi.tier.range) {
+      if (pi.state === 'chase' && pi.cooldown <= 0 && d < pi.tier.range) {
         const dmg = Phaser.Math.Between(pi.tier.dmg[0], pi.tier.dmg[1]);
         this.shoot(pi.spr, this.ship, dmg, false);
         pi.cooldown = pi.tier.fireRate;

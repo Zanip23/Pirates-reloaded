@@ -1,6 +1,6 @@
 import {
   PORTS, GOODS, UPGRADES, PORT_UPGRADES, RINGS, RUMORS,
-  priceWobble, shipStats, portUpgradePrice, portWarehouseCapacity, portGarrisonRadius,
+  priceWobble, shipStats, portUpgradePrice, portWarehouseCapacity,
 } from '../data.js';
 import { saveGame } from '../save.js';
 import { makeButton, makePanel, showToast, textStyle } from '../ui.js';
@@ -427,7 +427,7 @@ export class PortScene extends Phaser.Scene {
       }));
 
     this.ui(this.add.text(x, y + 200,
-      'Als Eigentümer kannst du hier\n• Kanonenbatterien aufstellen\n• Ein Lagerhaus betreiben\n• Handelspreise verbessern\n• Eine Garnison unterhalten\n• Einen Leuchtturm bauen\n• Dich hierher teleportieren',
+      'Als Eigentümer kannst du hier\n• Kanonenbatterien ausbauen (Anzahl, Radius, Frequenz, Schaden)\n• Ein Lagerhaus betreiben\n• Handelspreise verbessern\n• Einen Leuchtturm bauen\n• Dich hierher teleportieren',
       textStyle(11, '#9fb8c8', { wordWrap: { width: w }, lineSpacing: 4 })).setOrigin(0, 0));
   }
 
@@ -436,28 +436,29 @@ export class PortScene extends Phaser.Scene {
     const upgrades = p.portUpgrades?.[this.port.id] || {};
     const ring = this.port.ring;
 
-    this.ui(this.add.text(x, y + 4, '★ DEIN HAFEN', textStyle(13, '#ffd23f')).setOrigin(0, 0));
+    const cannonUpgrades = PORT_UPGRADES.filter(u => u.id.startsWith('cannon_'));
+    const otherUpgrades  = PORT_UPGRADES.filter(u => !u.id.startsWith('cannon_'));
+    const rowH = 46;
+    const btnW = 120;
 
-    const rowH = Math.min(72, Math.floor((h - 100) / PORT_UPGRADES.length));
-
-    PORT_UPGRADES.forEach((upg, i) => {
-      const ry = y + 28 + i * rowH;
-      const lvl = upgrades[upg.id] || 0;
+    const renderRow = (upg, ry) => {
+      const lvl   = upgrades[upg.id] || 0;
       const maxed = lvl >= upg.maxLevel;
       const price = portUpgradePrice(ring, lvl);
-      const btnW = 128;
-      const rightX = x + w - (btnW / 2 + 6);
+      const rightX = x + w - (btnW / 2 + 4);
 
       this.ui(this.add.text(x, ry, upg.name, textStyle(12, '#ffd23f')).setOrigin(0, 0));
-      this.ui(this.add.text(x, ry + 16, upg.desc, textStyle(10, '#9fb8c8', { wordWrap: { width: w - btnW - 20 } })).setOrigin(0, 0));
+      this.ui(this.add.text(x, ry + 13, upg.desc,
+        textStyle(9, '#9fb8c8', { wordWrap: { width: w - btnW - 16 } })).setOrigin(0, 0));
 
       if (maxed) {
-        this.ui(this.add.text(rightX, ry + 14, '✓ MAX', textStyle(12, '#5ce07a')).setOrigin(0.5));
-        this.ui(this.add.text(x, ry + 44, `Stufe ${lvl}/${upg.maxLevel}`, textStyle(10, '#9fb8c8')).setOrigin(0, 0));
+        this.ui(this.add.text(rightX, ry + 13, '✓ MAX', textStyle(11, '#5ce07a')).setOrigin(0.5));
+        this.ui(this.add.text(x, ry + 33, `Stufe ${lvl}/${upg.maxLevel}`, textStyle(9, '#9fb8c8')).setOrigin(0, 0));
       } else {
-        this.ui(this.add.text(x, ry + 44, `Stufe ${lvl}/${upg.maxLevel}  •  ${price.toLocaleString('de-DE')} Gold`,
-          textStyle(10, '#f6eed8')).setOrigin(0, 0));
-        this.ui(makeButton(this, rightX, ry + 20, btnW, 38, 'AUSBAUEN',
+        this.ui(this.add.text(x, ry + 33,
+          `Stufe ${lvl}/${upg.maxLevel}  •  ${price.toLocaleString('de-DE')} Gold`,
+          textStyle(9, '#f6eed8')).setOrigin(0, 0));
+        this.ui(makeButton(this, rightX, ry + 15, btnW, 30, 'AUSBAUEN',
           p.gold >= price ? 'good' : 'disabled', () => {
             if (!p.portUpgrades) p.portUpgrades = {};
             if (!p.portUpgrades[this.port.id]) p.portUpgrades[this.port.id] = {};
@@ -467,11 +468,19 @@ export class PortScene extends Phaser.Scene {
             this.rebuild();
           }));
       }
-    });
+    };
 
-    // Teleport section
-    const teleportY = y + h - 60;
-    this.buildTeleportButton(x, teleportY, w);
+    // ── Cannon section ─────────────────────────────────────────────────
+    this.ui(this.add.text(x, y + 4, '★ KANONENBATTERIE', textStyle(12, '#ffd23f')).setOrigin(0, 0));
+    cannonUpgrades.forEach((upg, i) => renderRow(upg, y + 22 + i * rowH));
+
+    // ── Other upgrades ─────────────────────────────────────────────────
+    const otherY = y + 22 + cannonUpgrades.length * rowH + 8;
+    this.ui(this.add.text(x, otherY, 'WEITERE AUFRÜSTUNGEN', textStyle(10, '#7a868f')).setOrigin(0, 0));
+    otherUpgrades.forEach((upg, i) => renderRow(upg, otherY + 16 + i * rowH));
+
+    // ── Teleport ────────────────────────────────────────────────────────
+    this.buildTeleportButton(x, y + h - 60, w);
   }
 
   buildTeleportButton(x, y, w) {
