@@ -134,7 +134,14 @@ export class PortScene extends Phaser.Scene {
 
   buildMarket(x, y, w, h) {
     const p = this.player;
-    const rowH = Math.min(56, Math.floor((h - 28) / GOODS.length));
+    const isOwned = (p.ownedPorts || []).includes(this.port.id);
+    const tradeLevel = isOwned ? (p.portUpgrades?.[this.port.id]?.trade || 0) : 0;
+    if (tradeLevel > 0) {
+      this.ui(this.add.text(x + w / 2, y + 4,
+        `Handelsposten Stufe ${tradeLevel} aktiv: −${tradeLevel * 5}% Einkauf / +${tradeLevel * 2.5}% Verkauf`,
+        textStyle(10, '#5ce07a', { align: 'center' })).setOrigin(0.5, 0));
+    }
+    const rowH = Math.min(56, Math.floor((h - (tradeLevel > 0 ? 44 : 28)) / GOODS.length));
 
     GOODS.forEach((good, gi) => {
       const ry = y + 18 + gi * rowH;
@@ -318,23 +325,61 @@ export class PortScene extends Phaser.Scene {
       });
     }
 
-    // Warehouse contents at this port (if owned + warehouse upgrade)
+    // ── Lagerhaus-Interaktion (volle Breite, unter den Stats) ──────────────
     const isOwned = (p.ownedPorts || []).includes(this.port.id);
     const whLevel = isOwned ? (p.portUpgrades?.[this.port.id]?.warehouse || 0) : 0;
     if (whLevel > 0) {
-      const wh = p.portWarehouse?.[this.port.id] || {};
+      if (!p.portWarehouse) p.portWarehouse = {};
+      const wh = p.portWarehouse[this.port.id] || {};
       const whUsed = Object.values(wh).reduce((s, v) => s + v, 0);
       const whCap = portWarehouseCapacity({ warehouse: whLevel });
-      const wY = y + 30 + (entries.length || 1) * 20 + 16;
-      this.ui(this.add.text(rightX, wY, `LAGER (${whUsed}/${whCap})`, textStyle(11, '#ffd23f')).setOrigin(0, 0));
-      const whEntries = GOODS.filter(g => (wh[g.id] || 0) > 0);
-      if (whEntries.length === 0) {
-        this.ui(this.add.text(rightX, wY + 18, '(leer)', textStyle(10, '#7a868f')).setOrigin(0, 0));
-      } else {
-        whEntries.forEach((g, i) => {
-          this.ui(this.add.text(rightX, wY + 18 + i * 18, `${g.name} ×${wh[g.id]}`,
-            textStyle(10, '#c8e0d0')).setOrigin(0, 0));
-        });
+      const shipUsed = used;
+      const cargoCap = st.cargoCap;
+
+      const whBaseY = y + 256;
+      this.ui(this.add.text(x, whBaseY,
+        `LAGERHAUS — ${whUsed}/${whCap} Einheiten eingelagert`,
+        textStyle(11, '#ffd23f')).setOrigin(0, 0));
+
+      const colW = Math.floor((w - 8) / 3);
+      let col = 0, row = 0;
+      GOODS.forEach(good => {
+        const inWh = wh[good.id] || 0;
+        const onShip = p.cargo[good.id] || 0;
+        if (inWh === 0 && onShip === 0) return;
+
+        const gx = x + col * (colW + 4);
+        const gy = whBaseY + 20 + row * 32;
+        const nameShort = good.name.length > 6 ? good.name.slice(0, 6) : good.name;
+        this.ui(this.add.text(gx, gy, `${nameShort}  S:${onShip} L:${inWh}`,
+          textStyle(9, '#c8e0d0')).setOrigin(0, 0));
+
+        if (onShip > 0 && whUsed < whCap) {
+          this.ui(makeButton(this, gx + 86, gy + 7, 40, 20, 'EINLG', 'normal', () => {
+            if (!p.portWarehouse[this.port.id]) p.portWarehouse[this.port.id] = {};
+            p.cargo[good.id] -= 1;
+            if (p.cargo[good.id] <= 0) delete p.cargo[good.id];
+            p.portWarehouse[this.port.id][good.id] = (p.portWarehouse[this.port.id][good.id] || 0) + 1;
+            saveGame(p); this.rebuild();
+          }));
+        }
+        if (inWh > 0 && shipUsed < cargoCap) {
+          this.ui(makeButton(this, gx + 130, gy + 7, 40, 20, 'ENTNH', 'normal', () => {
+            if (!p.portWarehouse[this.port.id]) p.portWarehouse[this.port.id] = {};
+            p.portWarehouse[this.port.id][good.id] -= 1;
+            if (p.portWarehouse[this.port.id][good.id] <= 0) delete p.portWarehouse[this.port.id][good.id];
+            p.cargo[good.id] = (p.cargo[good.id] || 0) + 1;
+            saveGame(p); this.rebuild();
+          }));
+        }
+
+        col++;
+        if (col >= 3) { col = 0; row++; }
+      });
+
+      if (Object.keys(wh).length === 0 && shipUsed === 0) {
+        this.ui(this.add.text(x, whBaseY + 20, '(keine Waren auf Schiff oder im Lager)',
+          textStyle(10, '#7a868f')).setOrigin(0, 0));
       }
     }
   }
@@ -427,45 +472,6 @@ export class PortScene extends Phaser.Scene {
     // Teleport section
     const teleportY = y + h - 60;
     this.buildTeleportButton(x, teleportY, w);
-  }
-
-  _buildWarehouseRow(x, y, w, wh, whCap, whUsed) {
-    const p = this.player;
-    const btnW = 50;
-    let xOff = 0;
-    GOODS.forEach(good => {
-      const inWh = wh[good.id] || 0;
-      const onShip = p.cargo[good.id] || 0;
-      if (inWh === 0 && onShip === 0) return;
-      const label = `${good.name.slice(0, 4)} ×${inWh}`;
-      this.ui(this.add.text(x + xOff, y, label, textStyle(9, '#c8e0d0')).setOrigin(0, 0));
-
-      if (onShip > 0 && whUsed < whCap) {
-        this.ui(makeButton(this, x + xOff + 60, y + 6, btnW, 22, 'EINLG', 'normal', () => {
-          if (!p.portWarehouse) p.portWarehouse = {};
-          if (!p.portWarehouse[this.port.id]) p.portWarehouse[this.port.id] = {};
-          p.cargo[good.id] -= 1;
-          if (p.cargo[good.id] <= 0) delete p.cargo[good.id];
-          p.portWarehouse[this.port.id][good.id] = (p.portWarehouse[this.port.id][good.id] || 0) + 1;
-          saveGame(p); this.rebuild();
-        }));
-      }
-      if (inWh > 0) {
-        const shipUsed = Object.values(p.cargo).reduce((s, v) => s + v, 0);
-        const cargoCap = shipStats(p).cargoCap;
-        this.ui(makeButton(this, x + xOff + 118, y + 6, btnW, 22, 'ENTNH',
-          shipUsed < cargoCap ? 'normal' : 'disabled', () => {
-            if (!p.portWarehouse) p.portWarehouse = {};
-            if (!p.portWarehouse[this.port.id]) p.portWarehouse[this.port.id] = {};
-            p.portWarehouse[this.port.id][good.id] -= 1;
-            if (p.portWarehouse[this.port.id][good.id] <= 0) delete p.portWarehouse[this.port.id][good.id];
-            p.cargo[good.id] = (p.cargo[good.id] || 0) + 1;
-            saveGame(p); this.rebuild();
-          }));
-      }
-      xOff += 180;
-      if (xOff + 180 > w) xOff = 0; // wrap (simplified)
-    });
   }
 
   buildTeleportButton(x, y, w) {

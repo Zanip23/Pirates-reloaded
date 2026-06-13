@@ -355,8 +355,16 @@ export class GameScene extends Phaser.Scene {
   drawMinimap() {
     const g = this.minimap;
     const W = this.scale.width;
-    const mw = Math.min(132, W * 0.28);
-    const mh = mw; // map is now square
+
+    // Leuchtturm: jede Stufe vergrößert die Minimap um 3px, max +60px
+    const lighthouseBonus = Math.min(
+      (this.player.ownedPorts || []).reduce((sum, portId) =>
+        sum + (this.player.portUpgrades?.[portId]?.lighthouse || 0), 0) * 3,
+      60
+    );
+
+    const mw = Math.min(132 + lighthouseBonus, W * 0.38);
+    const mh = mw; // Karte ist quadratisch
     const narrow = W < 500;
     const my = narrow ? 104 : 96;
     const mx = W - mw - 10;
@@ -379,10 +387,19 @@ export class GameScene extends Phaser.Scene {
     g.lineStyle(2, COLORS.panelEdge, 1);
     g.strokeRect(mx - 3, my - 3, mw + 6, mh + 6);
 
+    // Häfen: Garnison-Radius für eigene Häfen anzeigen
     const owned = this.player.ownedPorts || ['port_haven'];
     PORTS.forEach(p => {
       const isOwned = owned.includes(p.id);
-      g.fillStyle(isOwned ? 0xffd23f : (p.ring >= 2 ? 0xff7050 : 0xffd23f), 1);
+      if (isOwned) {
+        const garrisonLvl = this.player.portUpgrades?.[p.id]?.garrison || 0;
+        if (garrisonLvl > 0) {
+          const radius = portGarrisonRadius({ garrison: garrisonLvl }) * sx;
+          g.lineStyle(1, 0x5ce07a, 0.35);
+          g.strokeCircle(mx + p.x * sx, my + p.y * sy, radius);
+        }
+      }
+      g.fillStyle(isOwned ? 0xffd23f : (p.ring >= 2 ? 0xff7050 : 0xaab8c0), 1);
       const dotSize = isOwned ? 5 : 4;
       g.fillRect(mx + p.x * sx - dotSize / 2, my + p.y * sy - dotSize / 2, dotSize, dotSize);
     });

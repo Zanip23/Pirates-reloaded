@@ -251,7 +251,7 @@ export const PORT_UPGRADES = [
   },
   {
     id: 'lighthouse', name: 'Leuchtturm',
-    desc: 'Mehr Sichtweite auf der Minimap.',
+    desc: 'Vergrößert die Minimap (+3px je Stufe). Mehr Überblick über die See.',
     maxLevel: 5,
   },
 ];
