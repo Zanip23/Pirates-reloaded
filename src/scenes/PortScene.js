@@ -1,7 +1,8 @@
 import {
   PORTS, GOODS, UPGRADES, PORT_UPGRADES, RINGS, RUMORS,
-  priceWobble, shipStats, portUpgradePrice, portWarehouseCapacity,
+  priceWobble, shipStats, portUpgradePrice, portWarehouseCapacity, upgradePrice,
 } from '../data.js';
+import { TUNING } from '../config.js';
 import { saveGame } from '../save.js';
 import { makeButton, makePanel, showToast, textStyle } from '../ui.js';
 
@@ -123,7 +124,7 @@ export class PortScene extends Phaser.Scene {
     const wob = priceWobble(this.portIndex, goodIdx, this.player.day);
     const isOwned = (this.player.ownedPorts || []).includes(this.port.id);
     const tradeLevel = isOwned ? (this.player.portUpgrades?.[this.port.id]?.trade || 0) : 0;
-    const discount = tradeLevel * 0.05;
+    const discount = tradeLevel * TUNING.economy.tradeDiscountPerLevel;
     return {
       buy:   Math.max(1, Math.round(good.basePrice * mul.buy  * wob * (1 - discount))),
       sell:  Math.max(1, Math.round(good.basePrice * mul.sell * wob * (1 + discount * 0.5))),
@@ -138,7 +139,7 @@ export class PortScene extends Phaser.Scene {
     const tradeLevel = isOwned ? (p.portUpgrades?.[this.port.id]?.trade || 0) : 0;
     if (tradeLevel > 0) {
       this.ui(this.add.text(x + w / 2, y + 4,
-        `Handelsposten Stufe ${tradeLevel} aktiv: −${tradeLevel * 5}% Einkauf / +${tradeLevel * 2.5}% Verkauf`,
+        `Handelsposten Stufe ${tradeLevel} aktiv: −${Math.round(tradeLevel * TUNING.economy.tradeDiscountPerLevel * 100)}% Einkauf / +${Math.round(tradeLevel * TUNING.economy.tradeDiscountPerLevel * 50)}% Verkauf`,
         textStyle(10, '#5ce07a', { align: 'center' })).setOrigin(0.5, 0));
     }
     const rowH = Math.min(56, Math.floor((h - (tradeLevel > 0 ? 44 : 28)) / GOODS.length));
@@ -205,7 +206,7 @@ export class PortScene extends Phaser.Scene {
       const ry = y + 6 + i * rowH;
       const lvl = p.upgradeLevel[upg.id] || 0;
       const maxed = lvl >= upg.maxLevel;
-      const price = upg.price(lvl);
+      const price = upgradePrice(upg, lvl);
       const btnW = 128;
       const rightX = x + w - (btnW / 2 + 6);
 

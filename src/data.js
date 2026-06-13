@@ -1,6 +1,8 @@
 // World layout: concentric rings from the map center.
 // Ring 0 = safe home waters; outer rings = escalating danger and rewards.
 
+import { TUNING } from './config.js';
+
 export const MAP_W = 5000;
 export const MAP_H = 5000;
 export const MAP_CX = 2500;
@@ -225,7 +227,7 @@ export const PORTS = [
 
 export function priceWobble(portIndex, goodIndex, day) {
   const s = Math.sin(day * 0.9 + portIndex * 2.3 + goodIndex * 1.7);
-  return 1 + s * 0.12;
+  return 1 + s * TUNING.economy.priceWobbleAmount;
 }
 
 export const PORT_UPGRADES = [
@@ -267,55 +269,63 @@ export const PORT_UPGRADES = [
 ];
 
 export function portUpgradePrice(portRing, currentLevel) {
-  const base = 300 + portRing * 500;
-  return base * [1, 2, 4, 7, 12][currentLevel];
+  const e = TUNING.economy;
+  const base = e.portUpgradeBase + portRing * e.portUpgradeRingMult;
+  return base * (e.portUpgradeLevelMult[currentLevel] ?? 1);
 }
 
 export function portWarehouseCapacity(upgrades) {
-  return (upgrades?.warehouse || 0) * 20;
+  return (upgrades?.warehouse || 0) * TUNING.economy.warehousePerLevel;
 }
 
 export function portCannonStats(upgrades) {
+  const c = TUNING.portCannon;
   return {
     count:    upgrades?.cannon_count  || 0,
-    range:    400 + (upgrades?.cannon_radius || 0) * 100,
-    cooldown: Math.max(1500, 3500 - (upgrades?.cannon_rate   || 0) * 400),
-    damage:   10  + (upgrades?.cannon_damage || 0) * 15,
+    range:    c.baseRange + (upgrades?.cannon_radius || 0) * c.rangePerLevel,
+    cooldown: Math.max(c.minCooldown, c.baseCooldown - (upgrades?.cannon_rate || 0) * c.cooldownPerLevel),
+    damage:   c.baseDamage + (upgrades?.cannon_damage || 0) * c.damagePerLevel,
   };
 }
 
+// priceBase/priceStep: Preis einer Stufe = priceBase + Stufe × priceStep.
 export const UPGRADES = [
   {
     id: 'hull', name: 'Rumpfverstärkung',
     desc: 'Mehr Rumpfpunkte — du überstehst mehr Treffer.',
-    maxLevel: 4, price: (lvl) => 200 + lvl * 300,
+    maxLevel: 4, priceBase: 200, priceStep: 300,
   },
   {
     id: 'cannons', name: 'Schwere Kanonen',
     desc: 'Mehr Schaden und schnelleres Nachladen im Gefecht.',
-    maxLevel: 4, price: (lvl) => 250 + lvl * 350,
+    maxLevel: 4, priceBase: 250, priceStep: 350,
   },
   {
     id: 'sails', name: 'Schnelle Segel',
     desc: 'Höheres Tempo — entkomme Piraten oder jage sie.',
-    maxLevel: 4, price: (lvl) => 200 + lvl * 250,
+    maxLevel: 4, priceBase: 200, priceStep: 250,
   },
   {
     id: 'cargo', name: 'Erweiterter Frachtraum',
     desc: 'Mehr Platz für Waren auf jeder Fahrt.',
-    maxLevel: 4, price: (lvl) => 180 + lvl * 200,
+    maxLevel: 4, priceBase: 180, priceStep: 200,
   },
 ];
 
+export function upgradePrice(upg, lvl) {
+  return upg.priceBase + lvl * upg.priceStep;
+}
+
 export function shipStats(player) {
   const u = player.upgradeLevel || {};
+  const p = TUNING.player;
   return {
-    maxHull:   100 + (u.hull    || 0) * 25,
-    damage:    8   + (u.cannons || 0) * 4,
-    fireRate:  1500 - (u.cannons || 0) * 150,
-    speed:     105 + (u.sails   || 0) * 16,
-    cargoCap:  20  + (u.cargo   || 0) * 10,
-    range:     230,
+    maxHull:   p.baseMaxHull  + (u.hull    || 0) * p.hullPerLevel,
+    damage:    p.baseDamage   + (u.cannons || 0) * p.damagePerLevel,
+    fireRate:  p.baseFireRate - (u.cannons || 0) * p.fireRatePerLevel,
+    speed:     p.baseSpeed    + (u.sails   || 0) * p.speedPerLevel,
+    cargoCap:  p.baseCargo    + (u.cargo   || 0) * p.cargoPerLevel,
+    range:     p.range,
   };
 }
 
