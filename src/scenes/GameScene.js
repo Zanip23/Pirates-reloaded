@@ -1,6 +1,7 @@
 import {
   MAP_W, MAP_H, MAP_CX, MAP_CY, RING_RADII, RINGS, ringAt,
   PORTS, PIRATE_TIERS, INITIAL_PLAYER, shipStats, portCannonStats, clone,
+  gunneryStats, xpForKill, xpForNextLevel,
 } from '../data.js';
 import { saveGame, loadGame } from '../save.js';
 import { SCALE } from '../textures.js';
@@ -652,8 +653,16 @@ export class GameScene extends Phaser.Scene {
     if (!target) return;
     const moraleBonus = 0.85 + 0.3 * (this.player.morale / 100);
     const dmg = Math.round((st.damage + Phaser.Math.Between(0, 4)) * moraleBonus);
-    this.shoot(this.ship, target.spr, dmg, true);
-    this.fireCooldown = st.fireRate;
+    // Gunnery: Vorhalten (Genauigkeit) + Streuung (Präzision) aus Crew & Material.
+    const g = gunneryStats(this.player);
+    this.shoot(this.ship, target.spr, dmg, true, {
+      lead: { x: target.vx || 0, y: target.vy || 0 },
+      leadFactor: g.lead,
+      spread: g.spread,
+    });
+    // Schnelles Nachladen verkürzt die Ladezeit (stapelt mit dem Kanonen-Upgrade).
+    const reloadCut = (this.player.skills?.reload || 0) * TUNING.crew.reloadMsPerRank;
+    this.fireCooldown = Math.max(300, st.fireRate - reloadCut);
   }
 
   nearestPirate(range) {
@@ -752,12 +761,14 @@ export class GameScene extends Phaser.Scene {
     });
 
     const p = this.player;
-    const loot = Phaser.Math.Between(pi.tier.loot[0], pi.tier.loot[1]);
+    const plunderMult = 1 + (p.skills?.plunder || 0) * TUNING.crew.plunderPerRank;
+    const loot = Math.round(Phaser.Math.Between(pi.tier.loot[0], pi.tier.loot[1]) * plunderMult);
     p.gold += loot;
     p.enemiesDefeated++;
     p.reputation = Math.min(100, p.reputation + 2 + pi.tierIdx * 2);
     p.morale = Math.min(100, p.morale + 6);
     showToast(this, `${pi.tier.name} versenkt! +${loot} Gold`, '#5ce07a');
+    this.awardCrewXP(xpForKill(pi.tierIdx));
     saveGame(p);
     this.refreshHUD();
 
@@ -771,6 +782,21 @@ export class GameScene extends Phaser.Scene {
       }
       this.spawnPirate(pi.ring, pi.tierIdx);
     });
+  }
+
+  awardCrewXP(amount) {
+    const p = this.player;
+    p.crewXP = (p.crewXP || 0) + amount;
+    let leveled = 0;
+    while (p.crewXP >= xpForNextLevel(p.crewLevel || 1)) {
+      p.crewXP -= xpForNextLevel(p.crewLevel || 1);
+      p.crewLevel = (p.crewLevel || 1) + 1;
+      p.skillPoints = (p.skillPoints || 0) + TUNING.crew.skillPointsPerLevel;
+      leveled += TUNING.crew.skillPointsPerLevel;
+    }
+    if (leveled > 0) {
+      showToast(this, `Mannschaft Stufe ${p.crewLevel}! +${leveled} Skillpunkt(e)`, '#ffd23f');
+    }
   }
 
   // ── Port cannon batteries ──────────────────────────────────────────────────
@@ -830,6 +856,7 @@ export class GameScene extends Phaser.Scene {
     this.pirates.forEach(pi => {
       if (pi.hull <= 0) return;
       const d = Phaser.Math.Distance.Between(pi.spr.x, pi.spr.y, this.ship.x, this.ship.y);
+      const prevX = pi.spr.x, prevY = pi.spr.y;
 
       if (pi.state !== 'chase' && d < pi.tier.aggro && playerRing >= 1) {
         pi.state = 'chase';
@@ -875,6 +902,7 @@ export class GameScene extends Phaser.Scene {
       pi.spr.x = Phaser.Math.Clamp(pi.spr.x + Math.cos(pi.heading) * move, 24, MAP_W - 24);
       pi.spr.y = Phaser.Math.Clamp(pi.spr.y + Math.sin(pi.heading) * move, 24, MAP_H - 24);
       this.pushOffIslands(pi.spr);
+      if (dt > 0) { pi.vx = (pi.spr.x - prevX) / dt; pi.vy = (pi.spr.y - prevY) / dt; }
       const rot = pi.heading + Math.PI / 2;
       pi.spr.rotation = Math.round(rot / (Math.PI / 8)) * (Math.PI / 8);
 

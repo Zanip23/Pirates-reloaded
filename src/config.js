@@ -16,6 +16,13 @@ export const TUNING = {
     baseSpeed: 105,      speedPerLevel: 16,   // Tempo (Upgrade "Segel")
     baseCargo: 20,       cargoPerLevel: 10,   // Frachtkapazität (Upgrade "Frachtraum")
     range: 230,                               // Schussreichweite des Spielers (px)
+    // ── Geschützwesen (Gunnery) — Basiswerte ohne Crew-Skills ──────────────
+    // Genauigkeit (trifft die Mitte) = Vorhalten = leadFactor → nur Mannschaft.
+    // Präzision (enge Gruppierung)   = Streuung  = spread     → Mannschaft + Material.
+    gunneryBaseLeadFactor: 0.30,        // Vorhalten ohne Skill (hält kaum vor → verfehlt Bewegte)
+    gunneryBaseSpread: 0.14,            // Streuung ohne Skill/Upgrade (breit)
+    gunnerySpreadPerCannonLevel: 0.014, // "Schwere Kanonen" (Material) verbessert die Präzision
+    gunneryMinSpread: 0.035,            // Untergrenze der Streuung (nie perfekt)
   },
 
   // ── Kampf & Bewegung ─────────────────────────────────────────────────────
@@ -31,6 +38,24 @@ export const TUNING = {
     pirateOrbitFlipChance: 0.004, // Chance/Frame, die Umkreis-Richtung zu wechseln
     hitRadius: 26,             // Trefferradius einer Kugel (px)
     aggroLoseMult: 2.2,        // Verfolgung endet ab aggro × diesem Wert Distanz
+  },
+
+  // ── Mannschaft: Erfahrung & Skills ───────────────────────────────────────
+  // Die Crew sammelt EP nur durch versenkte Gegner, steigt in Stufen auf und
+  // erhält Skillpunkte. Skills = menschliche Fähigkeiten (Erfahrung), getrennt
+  // von Upgrades (Material) — manche Werte beeinflussen beide gemeinsam.
+  crew: {
+    xpPerTier: [10, 22, 40, 70],   // EP je versenktem Piraten nach Stufe (0–3)
+    levelBaseXP: 60,               // EP für den ersten Stufenaufstieg (1→2)
+    levelGrowth: 1.4,              // EP-Bedarf wächst je Stufe (× pro Stufe)
+    skillPointsPerLevel: 1,        // Skillpunkte je Stufenaufstieg
+    maxSkillRank: 5,               // höchster Rang je Skill
+    respecCostPerPoint: 40,        // Gold je zurückgesetztem Punkt (Umverteilung)
+    // Wirkung je Skill-Rang:
+    leadFactorPerRank: 0.14,       // Vorhalten (Genauigkeit): +Vorhalten je Rang
+    spreadPerRank: 0.012,          // Ruhige Hand (Präzision): −Streuung je Rang
+    reloadMsPerRank: 90,           // Schnelles Nachladen: −Ladezeit (ms) je Rang
+    plunderPerRank: 0.12,          // Plünderer: +Beute (×) je Rang
   },
 
   // ── Welt & Zeit ──────────────────────────────────────────────────────────

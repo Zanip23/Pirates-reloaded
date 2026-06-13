@@ -316,6 +316,56 @@ export function upgradePrice(upg, lvl) {
   return upg.priceBase + lvl * upg.priceStep;
 }
 
+// ── Mannschafts-Skills ─────────────────────────────────────────────────────
+// Skills = menschliche Fähigkeiten (durch Erfahrung), bewusst getrennt von den
+// materiellen Gold-Upgrades. Überschneidungen sind gewollt: z. B. verbessern
+// "Ruhige Hand" (Crew) UND "Schwere Kanonen" (Material) gemeinsam die Präzision.
+export const CREW_SKILLS = [
+  {
+    id: 'gunneryLead', name: 'Vorhalten',
+    desc: 'Genauigkeit: erfahrene Kanoniere führen bewegte Ziele vor und treffen sie tatsächlich. Reine Mannschaftssache — Material hilft hier nicht.',
+  },
+  {
+    id: 'gunneryGrouping', name: 'Ruhige Hand',
+    desc: 'Präzision: engere Streuung der Salven. Stapelt mit dem Upgrade "Schwere Kanonen".',
+  },
+  {
+    id: 'reload', name: 'Schnelles Nachladen',
+    desc: 'Kürzere Ladezeit zwischen den Salven. Stapelt mit dem Upgrade "Schwere Kanonen".',
+  },
+  {
+    id: 'plunder', name: 'Plünderer',
+    desc: 'Mehr Goldbeute aus versenkten Schiffen. Reine Mannschaftssache.',
+  },
+];
+
+// EP, die für den nächsten Aufstieg ab der angegebenen Stufe nötig sind.
+export function xpForNextLevel(level) {
+  const c = TUNING.crew;
+  return Math.round(c.levelBaseXP * Math.pow(c.levelGrowth, Math.max(0, level - 1)));
+}
+
+// EP, die ein versenkter Pirat des angegebenen Tiers einbringt.
+export function xpForKill(tierIdx) {
+  const arr = TUNING.crew.xpPerTier;
+  return arr[tierIdx] ?? arr[arr.length - 1];
+}
+
+// Geschütz-Endwerte des Spielers: kombiniert Mannschaft (Skills) und Material
+// (Upgrades). leadFactor nur Crew, spread aus Crew + Kanonen-Upgrade.
+export function gunneryStats(player) {
+  const u = player.upgradeLevel || {};
+  const s = player.skills || {};
+  const pg = TUNING.player;
+  const c = TUNING.crew;
+  const lead = Math.min(1, pg.gunneryBaseLeadFactor + (s.gunneryLead || 0) * c.leadFactorPerRank);
+  const spread = Math.max(pg.gunneryMinSpread,
+    pg.gunneryBaseSpread
+      - (u.cannons || 0) * pg.gunnerySpreadPerCannonLevel
+      - (s.gunneryGrouping || 0) * c.spreadPerRank);
+  return { lead, spread };
+}
+
 export function shipStats(player) {
   const u = player.upgradeLevel || {};
   const p = TUNING.player;
@@ -382,7 +432,7 @@ export const RUMORS = [
 export const clone = (obj) => JSON.parse(JSON.stringify(obj));
 
 export const INITIAL_PLAYER = {
-  version: 3,
+  version: 4,
   name: 'Seefalke',
   gold: 500,
   hull: 100,
@@ -391,6 +441,10 @@ export const INITIAL_PLAYER = {
   maxCrew: 12,
   morale: 70,
   reputation: 0,
+  crewXP: 0,
+  crewLevel: 1,
+  skillPoints: 0,
+  skills: { gunneryLead: 0, gunneryGrouping: 0, reload: 0, plunder: 0 },
   x: 2500,
   y: 2420,
   day: 1,

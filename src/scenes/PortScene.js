@@ -1,6 +1,7 @@
 import {
-  PORTS, GOODS, UPGRADES, PORT_UPGRADES, RINGS, RUMORS,
+  PORTS, GOODS, UPGRADES, PORT_UPGRADES, RINGS, RUMORS, CREW_SKILLS,
   priceWobble, shipStats, portUpgradePrice, portWarehouseCapacity, upgradePrice,
+  xpForNextLevel,
 } from '../data.js';
 import { TUNING } from '../config.js';
 import { saveGame } from '../save.js';
@@ -72,10 +73,11 @@ export class PortScene extends Phaser.Scene {
 
     // Tabs
     const havenLabel = isOwned ? 'HAFEN ★' : 'HAFEN';
-    const tabs = ['MARKT', 'WERFT', 'TAVERNE', 'SCHIFF', havenLabel];
+    const crewLabel = (this.player.skillPoints || 0) > 0 ? 'CREW ●' : 'CREW';
+    const tabs = ['MARKT', 'WERFT', 'TAVERNE', crewLabel, 'SCHIFF', havenLabel];
     const tabW = (pw - 16) / tabs.length;
     tabs.forEach((tab, i) => {
-      const tabKey = tab === havenLabel ? 'HAFEN' : tab;
+      const tabKey = tab === havenLabel ? 'HAFEN' : tab === crewLabel ? 'CREW' : tab;
       const active = this.activeTab === tabKey;
       const btn = makeButton(this, 8 + tabW * i + tabW / 2, 92, tabW - 6, 40,
         tab, active ? 'gold' : 'normal', () => {
@@ -91,6 +93,7 @@ export class PortScene extends Phaser.Scene {
     if (this.activeTab === 'MARKT')   this.buildMarket(14, cy, pw - 28, ch);
     if (this.activeTab === 'WERFT')   this.buildShipyard(14, cy, pw - 28, ch);
     if (this.activeTab === 'TAVERNE') this.buildTavern(14, cy, pw - 28, ch);
+    if (this.activeTab === 'CREW')    this.buildCrew(14, cy, pw - 28, ch);
     if (this.activeTab === 'SCHIFF')  this.buildStatus(14, cy, pw - 28, ch);
     if (this.activeTab === 'HAFEN') {
       if (this.teleportMode) this.buildTeleport(14, cy, pw - 28, ch);
@@ -288,6 +291,91 @@ export class PortScene extends Phaser.Scene {
       this.ui(this.add.text(x, rY + 24 + i * 44, `„${r}"`,
         textStyle(11, '#c8b890', { fontStyle: 'italic', wordWrap: { width: w - 10 } })).setOrigin(0, 0));
     });
+  }
+
+  // ── Crew skills ──────────────────────────────────────────────────────────
+
+  skillEffectText(skillId, rank) {
+    const c = TUNING.crew;
+    switch (skillId) {
+      case 'gunneryLead':
+        return `Vorhalten ${(TUNING.player.gunneryBaseLeadFactor + rank * c.leadFactorPerRank).toFixed(2)} / 1.00`;
+      case 'gunneryGrouping':
+        return `Streuung −${(rank * c.spreadPerRank).toFixed(3)} rad`;
+      case 'reload':
+        return `Ladezeit −${rank * c.reloadMsPerRank} ms`;
+      case 'plunder':
+        return `Beute +${Math.round(rank * c.plunderPerRank * 100)} %`;
+      default:
+        return '';
+    }
+  }
+
+  buildCrew(x, y, w, h) {
+    const p = this.player;
+    const need = xpForNextLevel(p.crewLevel || 1);
+    const have = p.crewXP || 0;
+    const pts = p.skillPoints || 0;
+
+    this.ui(this.add.text(x, y + 4, `Mannschaft — Stufe ${p.crewLevel || 1}`, textStyle(14, '#ffd23f')).setOrigin(0, 0));
+    this.ui(this.add.text(x, y + 26, `Erfahrung: ${have} / ${need} EP  (nur durch versenkte Gegner)`,
+      textStyle(11, '#9fb8c8')).setOrigin(0, 0));
+
+    // XP-Balken
+    const barW = w, barY = y + 46;
+    this.ui(this.add.rectangle(x, barY, barW, 8, 0x0a1420).setOrigin(0, 0));
+    this.ui(this.add.rectangle(x, barY, barW * Math.min(1, have / need), 8, 0x4aa3ff).setOrigin(0, 0));
+
+    this.ui(this.add.text(x, y + 60, `Verfügbare Skillpunkte: ${pts}`,
+      textStyle(12, pts > 0 ? '#5ce07a' : '#9fb8c8')).setOrigin(0, 0));
+
+    const max = TUNING.crew.maxSkillRank;
+    const rowH = Math.min(86, Math.floor((h - 150) / CREW_SKILLS.length));
+    const btnW = 70;
+    const rightX = x + w - (btnW / 2 + 6);
+
+    CREW_SKILLS.forEach((sk, i) => {
+      const ry = y + 92 + i * rowH;
+      const rank = (p.skills?.[sk.id]) || 0;
+      const maxed = rank >= max;
+
+      this.ui(this.add.text(x, ry, `${sk.name}  (${rank}/${max})`, textStyle(13, '#ffd23f')).setOrigin(0, 0));
+      this.ui(this.add.text(x, ry + 18, sk.desc,
+        textStyle(10, '#9fb8c8', { wordWrap: { width: w - btnW - 24 } })).setOrigin(0, 0));
+      this.ui(this.add.text(x, ry + rowH - 20, this.skillEffectText(sk.id, rank),
+        textStyle(11, '#9fe8f0')).setOrigin(0, 0));
+
+      if (maxed) {
+        this.ui(this.add.text(rightX, ry + 16, '✓ MAX', textStyle(12, '#5ce07a')).setOrigin(0.5));
+      } else {
+        this.ui(makeButton(this, rightX, ry + 16, btnW, 38, '+1',
+          pts > 0 ? 'good' : 'disabled', () => {
+            if ((p.skillPoints || 0) <= 0) return;
+            if (!p.skills) p.skills = {};
+            p.skills[sk.id] = ((p.skills[sk.id]) || 0) + 1;
+            p.skillPoints -= 1;
+            saveGame(p);
+            this.rebuild();
+          }));
+      }
+    });
+
+    // Skillpunkte gegen Gold neu verteilen
+    const spent = CREW_SKILLS.reduce((s, sk) => s + ((p.skills?.[sk.id]) || 0), 0);
+    const ry = y + 92 + CREW_SKILLS.length * rowH + 4;
+    if (spent > 0) {
+      const cost = spent * TUNING.crew.respecCostPerPoint;
+      this.ui(this.add.text(x, ry, `Umverteilen: alle ${spent} Punkte zurück`, textStyle(11, '#c8b890')).setOrigin(0, 0.5));
+      this.ui(makeButton(this, rightX, ry, btnW + 40, 36, `${cost}g`,
+        p.gold >= cost ? 'normal' : 'disabled', () => {
+          if (p.gold < cost) return;
+          p.gold -= cost;
+          CREW_SKILLS.forEach(sk => { if (p.skills) p.skills[sk.id] = 0; });
+          p.skillPoints = (p.skillPoints || 0) + spent;
+          saveGame(p);
+          this.rebuild();
+        }));
+    }
   }
 
   // ── Ship status ────────────────────────────────────────────────────────────
