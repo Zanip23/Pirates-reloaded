@@ -104,6 +104,7 @@ export class GameScene extends Phaser.Scene {
       saveGame(this.player);
     });
 
+    this.playerVel = { x: 0, y: 0 };
     this.waterFrame = 0;
     this.time.addEvent({
       delay: 380, loop: true,
@@ -229,6 +230,7 @@ export class GameScene extends Phaser.Scene {
       home: { x, y },
       state: 'roam',
       roamTarget: null,
+      orbitDir: Math.random() < 0.5 ? 1 : -1,
       cooldown: Phaser.Math.Between(400, 1500),
     };
     this.pirates.push(pirate);
@@ -502,7 +504,12 @@ export class GameScene extends Phaser.Scene {
 
     this.handleKeyboard();
     this.handleJoystick();
+    const prevX = this.ship.x, prevY = this.ship.y;
     this.moveShip(dt);
+    if (dt > 0) {
+      this.playerVel.x = (this.ship.x - prevX) / dt;
+      this.playerVel.y = (this.ship.y - prevY) / dt;
+    }
     this.updateCombat(delta);
     this.updatePirates(dt, delta);
     this.updateBalls(dt);
@@ -661,16 +668,28 @@ export class GameScene extends Phaser.Scene {
     return best;
   }
 
-  shoot(fromSpr, targetSpr, dmg, friendly) {
-    const dx = targetSpr.x - fromSpr.x;
-    const dy = targetSpr.y - fromSpr.y;
-    const a = Math.atan2(dy, dx) + Phaser.Math.FloatBetween(-0.07, 0.07);
+  shoot(fromSpr, targetSpr, dmg, friendly, opts = {}) {
+    const spread = opts.spread ?? 0.07;
+    let aimX = targetSpr.x, aimY = targetSpr.y;
+    // Lead the target: aim at the predicted intercept point so a moving
+    // (e.g. circling) target can actually be hit. Two iterations converge well.
+    if (opts.lead) {
+      let t = Math.hypot(aimX - fromSpr.x, aimY - fromSpr.y) / BALL_SPEED;
+      for (let i = 0; i < 2; i++) {
+        aimX = targetSpr.x + opts.lead.x * t;
+        aimY = targetSpr.y + opts.lead.y * t;
+        t = Math.hypot(aimX - fromSpr.x, aimY - fromSpr.y) / BALL_SPEED;
+      }
+    }
+    const dx = aimX - fromSpr.x;
+    const dy = aimY - fromSpr.y;
+    const a = Math.atan2(dy, dx) + Phaser.Math.FloatBetween(-spread, spread);
     const spr = this.toWorld(this.add.image(fromSpr.x, fromSpr.y, 'ball').setScale(SCALE).setDepth(12));
     this.balls.push({
       spr, friendly, dmg,
       vx: Math.cos(a) * BALL_SPEED,
       vy: Math.sin(a) * BALL_SPEED,
-      life: Math.min(0.9, Math.hypot(dx, dy) / BALL_SPEED + 0.12),
+      life: Math.min(1.0, Math.hypot(dx, dy) / BALL_SPEED + 0.12),
     });
   }
 
@@ -818,10 +837,25 @@ export class GameScene extends Phaser.Scene {
         pi.roamTarget = null;
       }
 
-      let tx, ty, speed;
+      let want, speed, turnRate;
       if (pi.state === 'chase') {
-        tx = this.ship.x; ty = this.ship.y;
-        speed = pi.tier.speed * 1.45;
+        // Maintain a standoff distance and strafe sideways so the NPC orbits
+        // *with* the player instead of stopping and being circled for free.
+        const standoff = pi.tier.standoff;
+        const angToPlayer = Math.atan2(this.ship.y - pi.spr.y, this.ship.x - pi.spr.x);
+        // Radial: +1 close in when too far, -1 back off when too close.
+        const radial = Phaser.Math.Clamp((d - standoff) / 70, -1, 1);
+        // Tangential component keeps a broadside on the player and counters
+        // the player's own circling.
+        const tang = pi.orbitDir;
+        const mvx = Math.cos(angToPlayer) * radial - Math.sin(angToPlayer) * tang * 0.95;
+        const mvy = Math.sin(angToPlayer) * radial + Math.cos(angToPlayer) * tang * 0.95;
+        want = Math.atan2(mvy, mvx);
+        speed = pi.tier.speed * 1.25;
+        turnRate = 3.0;
+        // Occasionally flip orbit direction so the player can't settle into a
+        // safe rhythm.
+        if (Math.random() < 0.004) pi.orbitDir *= -1;
       } else {
         if (!pi.roamTarget || Phaser.Math.Distance.Between(pi.spr.x, pi.spr.y, pi.roamTarget.x, pi.roamTarget.y) < 24) {
           pi.roamTarget = {
@@ -829,13 +863,13 @@ export class GameScene extends Phaser.Scene {
             y: Phaser.Math.Clamp(pi.home.y + Phaser.Math.Between(-260, 260), 60, MAP_H - 60),
           };
         }
-        tx = pi.roamTarget.x; ty = pi.roamTarget.y;
+        want = Math.atan2(pi.roamTarget.y - pi.spr.y, pi.roamTarget.x - pi.spr.x);
         speed = pi.tier.speed * 0.55;
+        turnRate = 2.4;
       }
 
-      const want = Math.atan2(ty - pi.spr.y, tx - pi.spr.x);
-      pi.heading = Phaser.Math.Angle.RotateTo(pi.heading, want, 2.4 * dt);
-      const move = (pi.state === 'chase' && d < 120) ? 0 : speed * dt;
+      pi.heading = Phaser.Math.Angle.RotateTo(pi.heading, want, turnRate * dt);
+      const move = speed * dt;
       pi.spr.x = Phaser.Math.Clamp(pi.spr.x + Math.cos(pi.heading) * move, 24, MAP_W - 24);
       pi.spr.y = Phaser.Math.Clamp(pi.spr.y + Math.sin(pi.heading) * move, 24, MAP_H - 24);
       this.pushOffIslands(pi.spr);
@@ -844,8 +878,13 @@ export class GameScene extends Phaser.Scene {
 
       pi.cooldown -= delta;
       if (pi.state === 'chase' && pi.cooldown <= 0 && d < pi.tier.range) {
-        const dmg = Phaser.Math.Between(pi.tier.dmg[0], pi.tier.dmg[1]);
-        this.shoot(pi.spr, this.ship, dmg, false);
+        // Fire a leading broadside: several balls fanned by the tier spread,
+        // aimed at the player's predicted position.
+        const salvo = pi.tier.salvo || 1;
+        for (let s = 0; s < salvo; s++) {
+          const dmg = Phaser.Math.Between(pi.tier.dmg[0], pi.tier.dmg[1]);
+          this.shoot(pi.spr, this.ship, dmg, false, { lead: this.playerVel, spread: pi.tier.spread });
+        }
         pi.cooldown = pi.tier.fireRate;
       }
 
