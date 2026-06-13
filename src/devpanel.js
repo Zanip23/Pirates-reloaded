@@ -266,6 +266,40 @@ function buildTradeTab() {
   return wrap;
 }
 
+function buildSkillsTab() {
+  const wrap = el('div');
+  wrap.append(el('div', 'dp-hint', 'Erfahrung & Mannschafts-Skills. Genauigkeit (Vorhalten) = nur Crew; Präzision (Streuung) = Crew + Kanonen-Upgrade.'));
+
+  wrap.append(card('Geschützwesen-Basis (Spieler)', fieldGrid(objFields(TUNING.player, [
+    ['gunneryBaseLeadFactor', 'Basis-Vorhalten', 'Vorhalten ohne Skill (0 = gar nicht, 1 = perfekt). Skills erhöhen das.', 0.05],
+    ['gunneryBaseSpread', 'Basis-Streuung', 'Streuung ohne Skill/Upgrade (rad). Größer = ungenauer.', 0.005],
+    ['gunnerySpreadPerCannonLevel', 'Streuung je Kanonen-Stufe', 'Wie stark "Schwere Kanonen" (Material) die Präzision verbessert.', 0.002],
+    ['gunneryMinSpread', 'Min. Streuung', 'Untergrenze — der Spieler trifft nie zu 100 %.', 0.005],
+  ]))));
+
+  wrap.append(card('Erfahrung & Stufen', fieldGrid([
+    { label: 'EP Tier 0 (Freibeuter)', desc: 'EP für einen versenkten Freibeuter.', step: 1, get: () => TUNING.crew.xpPerTier[0], set: v => TUNING.crew.xpPerTier[0] = v },
+    { label: 'EP Tier 1 (Korsar)', desc: 'EP für einen versenkten Korsar.', step: 1, get: () => TUNING.crew.xpPerTier[1], set: v => TUNING.crew.xpPerTier[1] = v },
+    { label: 'EP Tier 2 (Galeone)', desc: 'EP für eine versenkte Schwarze Galeone.', step: 1, get: () => TUNING.crew.xpPerTier[2], set: v => TUNING.crew.xpPerTier[2] = v },
+    { label: 'EP Tier 3 (Todesgaleone)', desc: 'EP für eine versenkte Todesgaleone.', step: 1, get: () => TUNING.crew.xpPerTier[3], set: v => TUNING.crew.xpPerTier[3] = v },
+    ...objFields(TUNING.crew, [
+      ['levelBaseXP', 'EP für Stufe 1→2', 'Grund-EP-Bedarf des ersten Aufstiegs.'],
+      ['levelGrowth', 'EP-Wachstum je Stufe', 'Faktor, um den der EP-Bedarf pro Stufe steigt.', 0.05],
+      ['skillPointsPerLevel', 'Skillpunkte je Stufe', 'Punkte pro Aufstieg.', 1],
+      ['maxSkillRank', 'Max. Skill-Rang', 'Höchster Rang je Skill.', 1],
+      ['respecCostPerPoint', 'Umverteilen je Punkt', 'Goldkosten pro zurückgesetztem Skillpunkt.', 5],
+    ]),
+  ])));
+
+  wrap.append(card('Skill-Wirkung je Rang', fieldGrid(objFields(TUNING.crew, [
+    ['leadFactorPerRank', 'Vorhalten / Rang', 'Genauigkeit: +Vorhalten je Rang von "Vorhalten".', 0.01],
+    ['spreadPerRank', 'Streuung − / Rang', 'Präzision: −Streuung (rad) je Rang von "Ruhige Hand".', 0.002],
+    ['reloadMsPerRank', 'Ladezeit − / Rang', 'Verkürzung der Ladezeit (ms) je Rang von "Schnelles Nachladen".', 5],
+    ['plunderPerRank', 'Beute + / Rang', 'Zusätzliche Beute (×) je Rang von "Plünderer".', 0.02],
+  ]))));
+  return wrap;
+}
+
 function buildWorldTab() {
   const wrap = el('div');
   wrap.append(card('Welt & Zeit', fieldGrid(objFields(TUNING.world, [
@@ -281,6 +315,7 @@ const TABS = [
   ['Kampf', buildCombatTab],
   ['Upgrade-Kosten', buildCostTab],
   ['Handel', buildTradeTab],
+  ['Mannschaft', buildSkillsTab],
   ['Welt', buildWorldTab],
 ];
 

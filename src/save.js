@@ -33,6 +33,17 @@ export function loadGame() {
       data.upgradeLevel = {};
     }
 
+    // Crew-Erfahrung & Skills (ab Version 4)
+    if (typeof data.crewXP !== 'number') data.crewXP = 0;
+    if (typeof data.crewLevel !== 'number' || data.crewLevel < 1) data.crewLevel = 1;
+    if (typeof data.skillPoints !== 'number') data.skillPoints = 0;
+    if (!data.skills || typeof data.skills !== 'object' || Array.isArray(data.skills)) {
+      data.skills = { gunneryLead: 0, gunneryGrouping: 0, reload: 0, plunder: 0 };
+    }
+    for (const k of ['gunneryLead', 'gunneryGrouping', 'reload', 'plunder']) {
+      if (typeof data.skills[k] !== 'number' || data.skills[k] < 0) data.skills[k] = 0;
+    }
+
     if (!Array.isArray(data.ownedPorts)) data.ownedPorts = ['port_haven'];
     if (!data.portUpgrades || typeof data.portUpgrades !== 'object') data.portUpgrades = {};
     if (!data.portWarehouse || typeof data.portWarehouse !== 'object') data.portWarehouse = {};
